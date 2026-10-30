@@ -5,7 +5,7 @@ model_list:
   # A model on the LAN, e.g. Ollama on another box.
   - model_name: local
     litellm_params:
-      model: ollama/llama3.1
+      model: ollama_chat/llama3.1
       api_base: os.environ/OLLAMA_API_BASE
 
   # A hosted model. The provider key never leaves the proxy.

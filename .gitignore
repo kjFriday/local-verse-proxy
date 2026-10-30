@@ -1,4 +1,5 @@
 # Real secrets. Only the .example is tracked.
-seats.env
+seats.env*
+!seats.env.example
 .env
 *.key
