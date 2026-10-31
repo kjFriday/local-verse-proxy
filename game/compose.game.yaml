@@ -1,0 +1,36 @@
+# Office game, practice mode: an overlay on compose.yaml. It swaps in
+# game/config.game.yaml and adds a fake model server. Turn it on with
+# one line in .env, next to compose.yaml (see game/README.md):
+#   COMPOSE_FILE=compose.yaml:game/compose.game.yaml
+# Paths here are relative to the repo root, like in compose.yaml.
+
+services:
+  proxy:
+    volumes:
+      # Same target as in compose.yaml, so this mount replaces it.
+      - ./game/config.game.yaml:/app/config.yaml:ro
+    environment:
+      # The practice models live in fake-ollama. LiteLLM also reads
+      # this at startup to look the models up, so it must point there
+      # (a real Ollama in seats.env would be asked about fake models).
+      OLLAMA_API_BASE: http://fake-ollama:11434
+      # Budget reset sweep every 5 s, not every ~10 min, so a short
+      # practice day gets its mana back on time.
+      PROXY_BUDGET_RESCHEDULER_MIN_TIME: "5"
+      PROXY_BUDGET_RESCHEDULER_MAX_TIME: "5"
+      # Batch-write spend every 5-10 s (default 10-15 s), and flush
+      # spend logs on every queue poll, so the board fills up fast.
+      PROXY_BATCH_WRITE_AT: "5"
+      SPEND_LOG_QUEUE_SIZE_THRESHOLD: "1"
+    depends_on:
+      fake-ollama:
+        condition: service_started
+
+  # Practice model server. No ports: only the proxy reaches it, over
+  # the compose network.
+  fake-ollama:
+    image: python:3.12-slim
+    command: ["python", "-u", "/srv/fake_ollama.py"]
+    volumes:
+      - ./game/fake_ollama.py:/srv/fake_ollama.py:ro
+    restart: unless-stopped

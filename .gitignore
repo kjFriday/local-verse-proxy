@@ -3,3 +3,6 @@ seats.env*
 !seats.env.example
 .env
 *.key
+# Office game state (game/README.md). Keys are *.key, above.
+game/office.db*
+__pycache__/
