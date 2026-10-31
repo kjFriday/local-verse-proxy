@@ -1,0 +1,24 @@
+# LiteLLM proxy config. Upstream secrets come from seats.env via
+# os.environ/..., so this file is safe to commit.
+
+model_list:
+  # A model on the LAN, e.g. Ollama on another box.
+  - model_name: local
+    litellm_params:
+      model: ollama_chat/llama3.1
+      api_base: os.environ/OLLAMA_API_BASE
+
+  # A hosted model. The provider key never leaves the proxy.
+  - model_name: claude
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+general_settings:
+  # The one lock. Only the mint script uses it.
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # Virtual keys, budgets and spend live in Postgres.
+  database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  drop_params: true

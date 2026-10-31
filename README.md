@@ -1,2 +1,688 @@
 # local-verse-proxy
-A small multinode architecture for LAN systems using keys.
+
+This repo runs a LiteLLM **proxy** (a middleman for AI requests) on
+your local network, so each person or device gets its own limited key
+while the real provider keys stay on one machine.
+
+Think of an office building. The manager's **master key** opens
+everything, so it never leaves the office. Each worker gets a **key
+card** that opens only some doors and can be switched off without
+changing a single lock. This repo is that system, for AI models.
+
+> **Status: early, but tested.** This setup has run end to end
+> against the real LiteLLM v1.106.6 and Postgres, with a stand-in
+> Ollama, and passed the [3-check test](#step-6-the-3-check-test).
+> Run that test on your own machine to confirm. If something behaves
+> differently from this guide, trust what you see.
+
+Text in angle brackets, like `<proxy-ip>`, is a placeholder. Replace
+all of it, brackets too, with your own value: `http://<proxy-ip>:4000`
+becomes `http://192.168.1.20:4000`. New words are explained where
+they first appear, and in the [glossary](#glossary).
+
+## Contents
+
+- [Quick start](#quick-start), for people who know Docker
+- [One lock, many keys](#one-lock-many-keys): how it works
+- Setup, step by step:
+  1. [Check your tools](#step-1-check-your-tools)
+  2. [Get the files](#step-2-get-the-files)
+  3. [Make your secrets file](#step-3-make-your-secrets-file)
+  4. [Start the proxy](#step-4-start-the-proxy)
+  5. [Mint your first key](#step-5-mint-your-first-key)
+  6. [Run the 3-check test](#step-6-the-3-check-test)
+  7. [Give the key to a seat](#step-7-give-the-key-to-a-seat)
+- Using it: [minting more keys](#minting-more-keys),
+  [revoking](#revoking-a-key), [adding a model](#adding-a-model),
+  [day-to-day commands](#day-to-day-commands),
+  [safety rules](#safety-rules)
+- Troubleshooting: [setting up](#troubleshooting-setting-up),
+  [minting](#troubleshooting-minting), [the proxy](#troubleshooting-the-proxy),
+  [seats](#troubleshooting-seats)
+- [FAQ](#faq), [file map](#file-map), [glossary](#glossary), [license](#license)
+
+## Quick start
+
+```sh
+# on the proxy machine
+git clone https://github.com/kjFriday/local-verse-proxy
+cd local-verse-proxy
+cp seats.env.example seats.env && chmod 600 seats.env
+nano seats.env                # fill it in (Step 3 shows how)
+grep -E 'change-me|^LITELLM_MASTER_KEY=$' seats.env  # prints nothing
+docker compose up -d
+docker compose ps             # db (healthy) and proxy, both Up
+# first start takes a minute or two; Ctrl+C after 3 min, see "Is it up?"
+until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done
+key=$(./mint-key.sh laptop) && echo "$key" > laptop.key
+chmod 600 laptop.key
+cat laptop.key                # one line starting with sk-
+```
+
+In `seats.env`: two different random `sk-` keys, one letters-and-digits
+password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and
+`OLLAMA_API_BASE`. Then run the [3-check test](#step-6-the-3-check-test).
+
+## One lock, many keys
+
+| In the building | In this repo                            |
+|-----------------|-----------------------------------------|
+| The front door  | The proxy, on port 4000                 |
+| Master key      | `LITELLM_MASTER_KEY` in `seats.env`     |
+| The locked safe | Real provider keys, also in `seats.env` |
+| A key card      | A virtual key you mint for one seat     |
+| Doors it opens  | Models it may use (`local`, `claude`)   |
+| Card runs out   | It spends its budget or expires         |
+| Cancel a card   | `./mint-key.sh --revoke-seat <seat>`    |
+
+A **seat** is one person, computer or app. Its **virtual key** is an
+**API key** (a secret string that lets a program use a service) that
+works only through the proxy, within its limits. To **mint** a key is
+to create one; to **revoke** it is to cancel it.
+
+### How the pieces fit
+
+```text
+  laptop      desk       app
+  key A       key B      key C
+     \          |          /
+      v         v         v
+   +----------------------+
+   |  proxy on port 4000  | <-- mint-key.sh
+   |  checks every key    |     (uses the
+   +----------------------+      master key)
+      |       |        |
+      |       |        +--> Postgres
+      v       v             (keys, budgets,
+    local   claude           spending)
+  (Ollama) (Anthropic)
+```
+
+On each request the proxy checks the key: real, not expired, allowed
+this model, and under its **budget** (the most it may spend, in US
+dollars)? If so, it calls the real model with the real API key and
+adds the cost to the key's spending in **Postgres**, its database.
+If not, the app gets an error. Lose a laptop? Revoke its key; nobody
+else has to change anything. `local` and `claude` are **model
+aliases**: short names that `config.yaml` points at real models.
+
+## Step 1: Check your tools
+
+Pick one computer as the **proxy machine**: always on, on the same
+network as your seats, running Linux or macOS. (On Windows, do every
+step inside WSL, with Docker Desktop's WSL integration turned on.)
+Open a **terminal** (the window where you type commands) there and
+run:
+
+```sh
+docker version --format '{{.Server.Version}}'
+docker compose version
+curl --version
+jq --version
+openssl version
+git --version
+```
+
+**Success:** each prints a version number. **Docker** runs programs
+in sealed boxes called **containers**, and Docker Compose starts
+several of them together. The first command prints a number only if
+Docker is running and your user may use it (if not, see
+[Troubleshooting: setting up](#troubleshooting-setting-up)). curl must
+be 7.76 or newer; Ubuntu 20.04 and RHEL 8 ship older ones.
+
+### Missing a tool?
+
+Ubuntu or Debian: `sudo apt install curl jq openssl git`.
+Fedora: `sudo dnf install curl jq openssl git`. Mac: `brew install jq`.
+Get Docker from docker.com. `mint-key.sh` also needs bash, which
+Linux and macOS have.
+
+### Also: your Ollama server
+
+The test uses `local`, served by Ollama. From the proxy machine, try
+your Ollama machine's address (on that machine, `hostname -I` shows
+it; on a Mac, `ipconfig getifaddr en0`). `-m 5` gives up after 5
+seconds instead of hanging:
+
+```sh
+curl -m 5 http://<ollama-ip>:11434
+```
+
+**Success:** `Ollama is running`. Keep that whole URL for Step 3b. If
+it fails and the address is right, Ollama is probably listening only
+to its own computer, its default: set `OLLAMA_HOST=0.0.0.0` on that
+machine and restart Ollama ([how](#letting-the-proxy-reach-ollama)).
+Ollama on the proxy machine itself? Still use the network address
+([find it](#find-the-proxy-address)), not `localhost`.
+
+Ollama also needs the model that `local` points to. Run
+`grep ollama_chat config.yaml`; the name comes after `ollama_chat/`.
+On the Ollama machine, `ollama pull <name>` downloads it. No Ollama?
+Use `claude` instead; Steps 3b and 6 say what to change.
+
+### Letting the proxy reach Ollama
+
+On Linux, run `sudo systemctl edit ollama`, and between the two
+comment lines at the top add `[Service]` and, on the next line,
+`Environment="OLLAMA_HOST=0.0.0.0"`. Save, then run
+`sudo systemctl restart ollama`. On a Mac, run
+`launchctl setenv OLLAMA_HOST 0.0.0.0`, then quit and reopen Ollama.
+On Windows, add a user environment variable `OLLAMA_HOST` with value
+`0.0.0.0`, then quit and reopen Ollama. Typing `export OLLAMA_HOST=...`
+in a terminal does not change a running Ollama.
+
+Then run the `curl` check above again, and read
+[safety rule 7](#safety-rules): Ollama is now open to your network.
+
+## Step 2: Get the files
+
+```sh
+git clone https://github.com/kjFriday/local-verse-proxy
+cd local-verse-proxy
+ls
+```
+
+**Success:** `ls` lists `compose.yaml`, `config.yaml`, `mint-key.sh`,
+`seats.env.example`, `README.md` and `LICENSE`. Run every later
+command from this folder. A new terminal starts in your home folder,
+so `cd` back here first.
+
+## Step 3: Make your secrets file
+
+All the secrets live in one **env file**: a plain text file of
+`NAME=value` lines that programs read settings from. Copy the
+template and make it readable only by you:
+
+```sh
+cp seats.env.example seats.env
+chmod 600 seats.env
+```
+
+Run the copy only once: later, it would wipe your filled-in file.
+
+### 3a. The three secrets
+
+The master key, the **salt key** (it encrypts stored credentials in
+the database) and the database password must be random. This block
+makes all three and writes them in, so nothing is copied by hand:
+
+```sh
+pw="$(openssl rand -hex 16)"
+mk="sk-$(openssl rand -hex 24)"
+sk="sk-$(openssl rand -hex 24)"
+sed -i.bak \
+  -e "s/^LITELLM_MASTER_KEY=$/LITELLM_MASTER_KEY=$mk/" \
+  -e "s/^LITELLM_SALT_KEY=sk-change-me$/LITELLM_SALT_KEY=$sk/" \
+  -e "s/change-me/$pw/g" seats.env && rm seats.env.bak
+unset pw mk sk
+```
+
+It prints nothing, and it fills only lines that still hold the
+template's placeholders, so a second run changes nothing. The
+password goes in both database lines and is letters and digits only,
+which keeps `DATABASE_URL` valid. Do this **before the first
+`docker compose up`**: Postgres saves its password on first start,
+and the salt key must never change once values are stored with it.
+
+### 3b. Point at your models
+
+Open the file in nano, a simple text editor: `nano seats.env`. Move
+with the arrow keys, save with Ctrl+O then Enter, quit with Ctrl+X.
+`[ New File ]` at the bottom means you are in the wrong folder. To
+paste, use Ctrl+Shift+V (Linux terminals) or Cmd+V (Mac).
+
+Set the two **upstreams**, the real services behind the proxy:
+
+- `OLLAMA_API_BASE`: `http://<ollama-ip>:11434`, the address that
+  worked in Step 1 (the template's `192.168.1.50` is only an example).
+  Not `localhost`: inside the proxy's container, that means the
+  container itself.
+- `ANTHROPIC_API_KEY`: your Anthropic API key, for `claude`. Leave it
+  empty if you have none; `local` and the test do not need it. No
+  Ollama? Fill this in, and further down set `DEFAULT_MODELS=claude`.
+
+### 3c. Mint defaults, and a final check
+
+Leave the last block as it is: it tells `mint-key.sh` where the proxy
+is, and that new keys may use only `local`, spend 5 US dollars in
+total and expire after 30 days. Save, quit, then check:
+
+```sh
+grep -E 'change-me|^LITELLM_MASTER_KEY=$' seats.env
+```
+
+**Success:** it prints nothing. A printed line still needs a value.
+The proxy will not start with an empty master key, but it would start
+with the template's salt key or password, which anyone can read here.
+
+## Step 4: Start the proxy
+
+```sh
+docker compose up -d
+```
+
+The first time, Docker downloads two **images** (ready-made program
+bundles), LiteLLM and Postgres, which can take a few minutes. `-d`
+runs everything in the background. The `db` container (Postgres)
+starts first; once it reports healthy, the `proxy` container
+(LiteLLM) starts on port 4000. LiteLLM is pinned to `v1.106.6`, and
+the status codes in this guide come from that version. **Success:**
+lines ending in `Created`, `Healthy` and `Started`, then your prompt.
+
+### Is it up?
+
+```sh
+docker compose ps
+curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/models
+```
+
+**Success:** `ps` shows two rows, `db` and `proxy`, both `Up`, and
+`db` also says `healthy`. The `curl` line knocks without a key and
+prints an **HTTP status code**, a web server's three-digit answer.
+`401` ("not allowed") means the proxy is up and wants a key. `000`
+means nothing answered yet; the first start can take a minute or two.
+
+Still `000` after 3 minutes, or `proxy` shows `Restarting`? Run
+`docker compose logs proxy` and see
+[Troubleshooting: the proxy](#troubleshooting-the-proxy).
+
+## Step 5: Mint your first key
+
+Pick a short seat name, such as `laptop`. Each name can belong to
+only one key at a time. Mint the key and save it in a file named
+after the seat:
+
+```sh
+key=$(./mint-key.sh laptop) && echo "$key" > laptop.key
+chmod 600 laptop.key
+cat laptop.key
+```
+
+**Success:** one line starting with `sk-`: the laptop's key, with the
+defaults from Step 3c. The file is saved only if minting worked. If
+not, the reason is on screen and the next lines say
+`No such file or directory`; see
+[Troubleshooting: minting](#troubleshooting-minting).
+
+`.gitignore` keeps `.key` files out of git. The master key is never
+printed: the script hands it to curl through standard input, so it is
+not on the command line that `ps` shows, nor in your shell history.
+
+## Step 6: The 3-check test
+
+This checks the three promises of "one lock, many keys": a key works
+for its allowed models, is refused for others, and stops working once
+revoked. First mint a throwaway key that may use only `local`, with a
+1 dollar budget, held in a shell variable called `KEY`:
+
+```sh
+KEY=$(./mint-key.sh test-seat --models local --budget 1)
+[[ $KEY == sk-* ]] && echo "key made" || echo "mint failed"
+```
+
+**Success:** `key made`. On `mint failed`, read the error above it.
+`already exists` means an earlier test stopped partway: run
+`./mint-key.sh --revoke-seat test-seat` and mint again. Run all three
+checks in this same terminal window; `KEY` exists only there.
+
+### Check 1: the key works
+
+```sh
+curl -s localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local","messages":[{"role":"user","content":"hi"}]}'
+```
+
+The first answer can take up to a minute while Ollama loads the
+model. **Pass:** a block of **JSON** (structured text) with
+`"choices"` in it and a `"content"` holding the reply. **Fail:** JSON
+with `"error"`; its message usually says why. See
+[Troubleshooting: the proxy](#troubleshooting-the-proxy).
+
+### Check 2: the wrong model is refused
+
+Same key, but ask for `claude`. The status code prints last:
+
+```sh
+curl -s -w '\n%{http_code}\n' localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"claude","messages":[{"role":"user","content":"hi"}]}'
+```
+
+**Pass:** an error saying the model `is not available for this API
+key`, then `403` (with an older `LITELLM_TAG`, maybe `401`).
+**Fail:** a real answer, or an error about a missing or bad Anthropic
+key. Either means the key was not stopped at the door.
+
+### Check 3: a revoked key is refused
+
+```sh
+./mint-key.sh --revoke "$KEY"
+curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/models \
+  -H "Authorization: Bearer $KEY"
+```
+
+**Pass:** `revoked`, then `401`. All three pass? Your proxy works,
+and the test key is already gone.
+
+**If a check fails:** clean up with
+`./mint-key.sh --revoke-seat test-seat` (an error mentioning `404`
+just means it was already gone), fix the cause with the
+Troubleshooting sections, and run the test again from the top.
+
+**Only set up `claude`?** Swap `local` and `claude` everywhere in the
+test, including after `--models`. Check 1 then spends a tiny part of
+the 1 dollar budget.
+
+## Step 7: Give the key to a seat
+
+Send the seat three things, privately, not in a shared chat:
+
+- **Base URL**, the address an app sends requests to:
+  `http://<proxy-ip>:4000`
+- **API key:** the key you minted for it (`cat laptop.key`)
+- **Model:** `local`, or `claude` if its key allows it
+
+The seat types them into any **OpenAI-compatible** app or code
+library: one that speaks OpenAI's request format and lets you set a
+base URL (also called "API base" or "endpoint") and an API key. Some
+apps want `/v1` on the end; the proxy accepts both. A seat never
+needs `seats.env`, the master key, or this repo.
+
+### Find the proxy address
+
+On the proxy machine, run `hostname -I` (Linux) or
+`ipconfig getifaddr en0` (Mac; if it prints nothing, try `en1`), or
+check your router's device list. With WSL, `hostname -I` shows only
+WSL's own `172.` address: open Windows PowerShell, run `ipconfig`,
+and use the IPv4 address of your Wi-Fi or Ethernet adapter. Use the
+address starting `192.168.` or `10.`. Addresses starting `172.` are
+usually Docker's or WSL's own; skip them.
+
+### Seat check: can it reach the proxy?
+
+On the seat, open `http://<proxy-ip>:4000/v1/models` in a browser. A
+short JSON error such as `No api key passed in` means it reaches the
+proxy; "can't reach this page" means it does not (see
+[Troubleshooting: seats](#troubleshooting-seats)). Then try its key
+in a terminal, on one line (on Windows, type `curl.exe`):
+
+```sh
+curl http://<proxy-ip>:4000/v1/models -H "Authorization: Bearer <seat-key>"
+```
+
+**Pass:** JSON listing the models this key may use.
+
+## Minting more keys
+
+```sh
+./mint-key.sh <seat> [--models a,b] [--budget USD] [--duration 30d]
+```
+
+Parts in `[ ]` are optional; left out, they use the `DEFAULT_` lines
+in `seats.env`, which the script rereads every run.
+
+- `--models local,claude`: the aliases the key may use, split by
+  commas. Name at least one.
+- `--budget 20`: the most it may spend in total, in US dollars. Type
+  the number only. Never type `$`: the shell quietly turns `$20` into
+  `0`, and a key with a 0 budget is refused every time.
+- `--duration 90d`: time until it expires. `d` is days; `h` (hours)
+  and `w` (weeks) work too.
+
+For example, a desk computer that may use both models, saved the same
+way as in Step 5:
+
+```sh
+key=$(./mint-key.sh desk --models local,claude --budget 20 \
+  --duration 90d) && echo "$key" > desk.key
+```
+
+### Budgets, expiry and seat names
+
+- **A budget is a lifetime total.** It never refills. To top up,
+  revoke the key and mint a new one. A key past its budget gets `422`.
+- **`local` costs nothing.** LiteLLM prices the Ollama model at $0, so
+  budgets only limit paid models such as `claude`.
+- **Expiry is final.** An expired key gets `401` but may still hold
+  its seat name. Revoke it by seat name, then mint again.
+- **Seat names are unique.** Minting a taken name fails with
+  `already exists`. Revoke the old key, or pick a name like `laptop-2`.
+
+## Revoking a key
+
+Revoke a key when a device is lost, someone leaves, or a key may have
+leaked. Use one of these:
+
+```sh
+./mint-key.sh --revoke-seat laptop          # by seat name
+./mint-key.sh --revoke "$(cat laptop.key)"  # or by the key itself
+```
+
+**Success:** `revoked seat laptop` or `revoked`. The seat name works
+even if the key itself is lost. That key now gets `401`, every other
+key keeps working, and the seat name is free again; delete its file
+with `rm laptop.key`. An error mentioning `404` or `No keys found`
+means there was no such key: already revoked, or mistyped.
+
+## Adding a model
+
+Models are listed under `model_list:` in `config.yaml`. Copy an
+entry, paste it right after the `claude` entry (above
+`general_settings:`, with the same two spaces before the `-`), and
+change it. For a second Ollama model:
+
+```yaml
+  - model_name: local-small
+    litellm_params:
+      model: ollama_chat/<name-on-your-ollama>
+      api_base: os.environ/OLLAMA_API_BASE
+```
+
+`model_name` is the alias seats ask for; `model` is the real model,
+with the provider before the `/`. `os.environ/NAME` means "use the
+setting NAME from `seats.env`": put any new secret there, never in
+`config.yaml`. Apply the change, wait until the proxy answers, then
+mint keys with the new alias (old keys keep only the models they were
+made with). If the proxy then keeps restarting, its log usually names
+the bad line.
+
+```sh
+docker compose up -d --force-recreate proxy
+until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done
+./mint-key.sh den --models local,local-small
+```
+
+## Day-to-day commands
+
+```sh
+docker compose up -d          # start
+docker compose ps             # is it running?
+docker compose logs -f proxy  # watch messages (Ctrl+C to stop)
+docker compose down           # stop (keys are kept)
+docker compose up -d --force-recreate proxy   # apply edits
+```
+
+- Use the last line after editing `seats.env` or `config.yaml`; a
+  plain restart does not reread `seats.env`.
+- Keys and spending live in a Docker **volume** (storage that
+  survives restarts) called `pgdata`. Never add `-v` to
+  `docker compose down`: that deletes the volume and every key.
+- After a reboot both containers return on their own, but only if
+  Docker starts at boot: on Linux, `sudo systemctl enable docker`
+  once; in Docker Desktop, turn on its start-at-sign-in setting.
+
+## Safety rules
+
+1. **Never commit `seats.env`.** It holds every secret. `.gitignore`
+   covers it; keep it that way.
+2. **Never give anyone the master key.** Seats get only their own key.
+3. **Never change `LITELLM_SALT_KEY` after the first start.** Values
+   stored with it could no longer be decrypted.
+4. **One key per seat, kept private.** One lost device, one revoke.
+5. **Keep port 4000 on your local network.** Do not forward it from
+   your router. `compose.yaml` opens it on every network the machine
+   is on, as plain `http://` with no encryption, so keys cross your
+   network readable. Use it only on a network you trust. On Linux,
+   ports that Docker opens may bypass firewall rules such as ufw's.
+6. **The admin page shares the port.** LiteLLM serves one at
+   `http://<proxy-ip>:4000/ui`, and the master key logs in to it.
+7. **Lock down Ollama.** It has no keys. Anyone who reaches its port
+   11434 can use it directly, skipping your keys and budgets.
+   Firewall it so only the proxy machine can reach it. (Ollama on the
+   proxy machine? See [the ufw entry](#troubleshooting-the-proxy).)
+8. **Master key leaked?** Put a new one in `seats.env` and run
+   `docker compose up -d --force-recreate proxy`. Seat keys keep
+   working, and so does any key someone minted with the old master
+   key. In a browser on the proxy machine, open
+   `http://localhost:4000/ui`, log in as `admin` with the new master
+   key as password, and delete every key you did not make.
+
+## Troubleshooting: setting up
+
+- **`Cannot connect to the Docker daemon`**: Docker is not running.
+  On Linux, run `sudo systemctl enable --now docker`; or start Docker
+  Desktop.
+- **`permission denied` mentioning `docker.sock`**: your user may not
+  use Docker yet. Put `sudo` before `docker`, or run
+  `sudo usermod -aG docker $USER`, then log out and back in.
+- **`'compose' is not a docker command`**, `unknown command`, or
+  `unknown shorthand flag: 'd'`: Docker came without Compose, as
+  distro packages such as Ubuntu's `docker.io` do. On Ubuntu, run
+  `sudo apt install docker-compose-v2`; elsewhere, install Docker from
+  docker.com, which includes it.
+- **`no configuration file provided`**, or
+  `./mint-key.sh: No such file or directory`: you are not in the repo
+  folder. `cd` into it.
+- **`env file .../seats.env not found`** or **`missing ...`**: do
+  Step 3.
+- **`./mint-key.sh: Permission denied`**: the file lost its "may run"
+  flag, often after a download. Run `chmod +x mint-key.sh` once.
+- **`curl: option --fail-with-body: is unknown`**: your curl is older
+  than 7.76. Use a newer system as the proxy machine (Ubuntu 22.04 or
+  later, say), or install a newer curl.
+
+## Troubleshooting: minting
+
+- **`LITELLM_MASTER_KEY: not set in ...`**, or
+  **`replace the change-me values in ... first`**: a key in
+  `seats.env` is empty or a placeholder. If you never ran
+  `docker compose up`, do Step 3a and carry on. If you did, Postgres
+  already saved the template password, so start over (no keys exist
+  yet): `docker compose down -v`, Step 3a, then `docker compose up -d`.
+- **Usage text** (`Mint a scoped key for one seat...`): the seat name
+  is missing or starts with `-`, an option is misspelled or has no
+  value, or a space slipped into `--models local, claude`.
+- **`curl: (7) Failed to connect`**, **`(52) Empty reply from server`**
+  or **`(56) Recv failure`**: the proxy is not running, or is still
+  starting. Wait until [Is it up?](#is-it-up) prints `401`, then mint
+  again.
+- **`curl: (22)` with `400`, then `... already exists`**: that seat
+  name is taken. Run `./mint-key.sh --revoke-seat <seat>`, or pick a
+  new name.
+- **`curl: (22)` with `401`**: the proxy did not accept the master
+  key, usually because `seats.env` changed after it started. Run
+  `docker compose up -d --force-recreate proxy`.
+
+## Troubleshooting: the proxy
+
+Start with `docker compose ps`, then `docker compose logs proxy`.
+
+- **`proxy` keeps `Restarting`, and its log says it `refused to start`
+  over the master key**: `LITELLM_MASTER_KEY` in `seats.env` is empty.
+  Ignore the log's advice about a `.env` file, and never set the
+  `DANGEROUSLY_PERMIT` option it offers. Fix it as in
+  [Troubleshooting: minting](#troubleshooting-minting).
+- **`proxy` keeps restarting, and `docker compose logs db` says
+  `password authentication failed`**: Postgres kept the password
+  from its first start; put it back in `POSTGRES_PASSWORD` and
+  `DATABASE_URL`. If no keys are worth keeping yet (say you started
+  once before filling in `seats.env`), `docker compose down -v` and
+  then `docker compose up -d` start the database fresh, erasing all
+  keys.
+- **Check 1 fails with an error about reaching Ollama**: check that
+  `OLLAMA_API_BASE` is not `localhost`, the Step 1 Ollama check
+  passes, `OLLAMA_HOST=0.0.0.0` is set on the Ollama machine
+  ([how](#letting-the-proxy-reach-ollama)), and the model is
+  downloaded there.
+- **Same, with Ollama on the proxy machine behind a firewall such as
+  ufw**: the proxy's requests come from Docker's own network
+  (addresses starting `172.`), which the firewall may drop. Allow it:
+  `sudo ufw allow from 172.16.0.0/12 to any port 11434 proto tcp`
+- **`claude` fails, or an edit to `seats.env` or `config.yaml` is
+  ignored**: check `ANTHROPIC_API_KEY`, then apply your edits with
+  `docker compose up -d --force-recreate proxy`.
+
+## Troubleshooting: seats
+
+- **The seat cannot reach the proxy**: check the
+  [address](#find-the-proxy-address), that the seat is on the same
+  network, and that no firewall on the proxy machine blocks port
+  4000. If the Step 4 knock works on the proxy machine but the seat
+  check fails, it is a network problem, not a key problem.
+- **`No such file or directory` naming `proxy-ip` or similar**: a
+  placeholder was typed as is. Put in the real value, without `< >`.
+- **A brand-new key gets a budget error**: it was minted with a 0
+  budget, often by typing `$20`. Revoke it and mint again.
+- **A key that worked is refused**: `401` means it expired or was
+  revoked; `422` means its budget is spent. Revoke it by seat name to
+  free the name, then mint the seat a new key.
+- **`403`, "not available for this API key"**: the key was not made
+  with that model. Check the spelling, or mint one with `--models`.
+
+## FAQ
+
+**Which LiteLLM version runs?** `compose.yaml` pins `v1.106.6`. To
+change it, put `LITELLM_TAG=<tag>` in a file named `.env` next to
+`compose.yaml`, or set it in your shell. It does not work in
+`seats.env`, which is for the containers, not for Compose. Then run
+`docker compose pull` and `docker compose up -d`, and rerun the
+3-check test: status codes have changed between releases.
+
+**Does a seat ever see my real keys?** No, only its own virtual key.
+The real keys stay in `seats.env` on the proxy machine. There,
+`compose.yaml` hands that file to both containers, so the `db`
+container can see every secret too.
+
+**Can I run `mint-key.sh` from another computer?** Best not: you
+would copy every secret there, and the master key would cross your
+network over plain HTTP.
+
+## File map
+
+- `README.md`: this guide.
+- `config.yaml`: the models, and the names of the settings that hold
+  their secrets. No secrets inside, so it is safe to commit.
+- `seats.env.example`: the template for your secrets file.
+- `seats.env`: your real secrets, made in Step 3. Never commit it.
+- `mint-key.sh`: mints and revokes seat keys, using the master key.
+- `compose.yaml`: runs the proxy and Postgres, with the database in
+  the `pgdata` volume.
+- `.gitignore` (hidden; `ls -a` shows it): keeps `seats.env` and its
+  copies, `.env` and `*.key` files out of git.
+- `*.key`: seat keys you saved. Never commit them.
+- `LICENSE`: the MIT license.
+
+## Glossary
+
+- **API key:** a secret string that lets a program use a service.
+- **Budget:** the most a key may spend, in US dollars, over its life.
+- **Docker:** runs programs in sealed boxes called containers.
+- **Env file:** a text file of `NAME=value` lines, here `seats.env`.
+- **Master key:** `LITELLM_MASTER_KEY`, the admin key that makes and
+  cancels other keys. Never give it out.
+- **Mint, revoke:** create a virtual key; cancel one.
+- **Ollama:** a program that runs AI models on your own hardware.
+- **Port:** a numbered door on a computer. The proxy uses 4000.
+- **Postgres:** a database. Here it stores keys, budgets and spending.
+- **Proxy:** a middleman between apps and the real AI services.
+- **Salt key:** `LITELLM_SALT_KEY`; encrypts stored credentials.
+- **Seat:** one person, computer or app with its own key.
+- **Virtual key:** a seat's own key, limited by models, budget and
+  expiry, that works only through this proxy.
+
+## License
+
+MIT. See `LICENSE`.

@@ -1,0 +1,35 @@
+# Proxy + the Postgres it needs for virtual keys.
+#   docker compose up -d
+# Pinned LiteLLM version. To change it, set LITELLM_TAG in your shell
+# or in .env (not seats.env).
+
+services:
+  proxy:
+    image: ghcr.io/berriai/litellm:${LITELLM_TAG:-v1.106.6}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: seats.env
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    env_file: seats.env  # for POSTGRES_PASSWORD
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_DB: litellm
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm -h 127.0.0.1"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
