@@ -1,13 +1,31 @@
 # local-verse-proxy
 
-This repo runs a LiteLLM **proxy** (a middleman for AI requests) on
-your local network, so each person or device gets its own limited key
-while the real provider keys stay on one machine.
+One computer on your network holds the real keys to your AI
+services. Everyone else gets their own limited pass.
 
-Think of an office building. The manager's **master key** opens
-everything, so it never leaves the office. Each worker gets a **key
-card** that opens only some doors and can be switched off without
-changing a single lock. This repo is that system, for AI models.
+## In plain terms
+
+Say you pay for an AI service and want your household or office to
+use it. Usually everyone shares one password, so when a laptop goes
+missing, everybody has to switch to a new one.
+
+This repo puts one computer in the middle, like the front desk of an
+office building:
+
+- **The real password stays at the desk.** It lives on that one
+  machine, and nobody else ever sees it.
+- **Everyone gets their own key card**, with limits. For example:
+  Sam may use the cheap AI, up to 5 dollars, for 30 days.
+- **A laptop goes missing?** Cancel that one card. Everyone else
+  carries on.
+- **The desk keeps a tally** of who used what, and what it cost.
+
+`mint-key.sh` prints the key cards. The steps below set everything
+up one at a time, and say what you should see after each one.
+
+Under the hood, the desk is a LiteLLM **proxy** (a middleman for AI
+requests) running on your local network. The desk's own
+**master key** makes and cancels cards, so it never leaves the desk.
 
 > **Status: early, but tested.** This setup has run end to end
 > against the real LiteLLM v1.106.6 and Postgres, with a stand-in
@@ -22,6 +40,7 @@ they first appear, and in the [glossary](#glossary).
 
 ## Contents
 
+- [In plain terms](#in-plain-terms): what this does
 - [Quick start](#quick-start), for people who know Docker
 - [One lock, many keys](#one-lock-many-keys): how it works
 - Setup, step by step:
@@ -67,7 +86,7 @@ password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and
 
 | In the building | In this repo                            |
 |-----------------|-----------------------------------------|
-| The front door  | The proxy, on port 4000                 |
+| The front desk  | The proxy, on port 4000                 |
 | Master key      | `LITELLM_MASTER_KEY` in `seats.env`     |
 | The locked safe | Real provider keys, also in `seats.env` |
 | A key card      | A virtual key you mint for one seat     |
