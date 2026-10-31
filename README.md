@@ -9,10 +9,11 @@ everything, so it never leaves the office. Each worker gets a **key
 card** that opens only some doors and can be switched off without
 changing a single lock. This repo is that system, for AI models.
 
-> **Status: fresh scaffold.** It has not yet been run end to end
-> against a real LiteLLM. The [3-check test](#step-6-the-3-check-test)
-> is how you confirm it works. If something behaves differently from
-> this guide, trust what you see.
+> **Status: early, but tested.** This setup has run end to end
+> against the real LiteLLM v1.106.6 and Postgres, with a stand-in
+> Ollama, and passed the [3-check test](#step-6-the-3-check-test).
+> Run that test on your own machine to confirm. If something behaves
+> differently from this guide, trust what you see.
 
 Text in angle brackets, like `<proxy-ip>`, is a placeholder. Replace
 all of it, brackets too, with your own value: `http://<proxy-ip>:4000`
@@ -45,7 +46,7 @@ they first appear, and in the [glossary](#glossary).
 ```sh
 # on the proxy machine
 git clone https://github.com/kjFriday/local-verse-proxy
-cd local-verse-proxy && git checkout proxy-scaffold
+cd local-verse-proxy
 cp seats.env.example seats.env && chmod 600 seats.env
 nano seats.env                # fill it in (Step 3 shows how)
 grep -E 'change-me|^LITELLM_MASTER_KEY=$' seats.env  # prints nothing
@@ -178,15 +179,13 @@ Then run the `curl` check above again, and read
 ```sh
 git clone https://github.com/kjFriday/local-verse-proxy
 cd local-verse-proxy
-git checkout proxy-scaffold
 ls
 ```
 
-The `git checkout` line is needed while this setup lives on the
-`proxy-scaffold` branch. **Success:** `ls` lists `compose.yaml`,
-`config.yaml`, `mint-key.sh`, `seats.env.example`, `README.md` and
-`LICENSE`. Run every later command from this folder. A new terminal
-starts in your home folder, so `cd` back here first.
+**Success:** `ls` lists `compose.yaml`, `config.yaml`, `mint-key.sh`,
+`seats.env.example`, `README.md` and `LICENSE`. Run every later
+command from this folder. A new terminal starts in your home folder,
+so `cd` back here first.
 
 ## Step 3: Make your secrets file
 
