@@ -2,6 +2,8 @@
 #   docker compose up -d
 # Pinned LiteLLM version. To change it, set LITELLM_TAG in your shell
 # or in .env (not seats.env).
+# Front Desk too, the web page for key cards (gui/README.md):
+#   docker compose --profile frontdesk up -d
 
 # Fixed name, so the pgdata volume survives renaming the folder.
 name: local-verse-proxy
@@ -32,6 +34,49 @@ services:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm -h 127.0.0.1"]
       interval: 5s
       retries: 10
+    restart: unless-stopped
+
+  # Front Desk, built from gui/Dockerfile. Optional: only a command
+  # with --profile frontdesk starts it. Its password, if you pick one,
+  # goes in seats.env as FRONTDESK_PASSWORD. The FRONTDESK_ settings
+  # below come from your shell or .env, like LITELLM_TAG.
+  frontdesk:
+    profiles: ["frontdesk"]
+    build:
+      context: .
+      dockerfile: gui/Dockerfile
+    env_file: seats.env
+    environment:
+      # Inside Docker the proxy is "proxy", not localhost. These win
+      # over seats.env.
+      PROXY_URL: http://proxy:4000
+      FRONTDESK_BIND: ${FRONTDESK_BIND:-127.0.0.1}
+      FRONTDESK_PORT: ${FRONTDESK_PORT:-8040}
+      FRONTDESK_HOSTS: ${FRONTDESK_HOSTS:-}
+      FRONTDESK_SEAT_URL: ${FRONTDESK_SEAT_URL:-}
+      # Docker may hand its containers a web proxy (HTTP_PROXY, set in
+      # Docker's own settings). The proxy and db are right here: never
+      # send the master key through a web proxy to reach them.
+      NO_PROXY: proxy,db,localhost,127.0.0.1
+      no_proxy: proxy,db,localhost,127.0.0.1
+    volumes:
+      - ./game:/app/game:ro  # to tell the office game's seats
+    ports:
+      # Only this computer, unless FRONTDESK_BIND=0.0.0.0.
+      - "${FRONTDESK_BIND:-127.0.0.1}:${FRONTDESK_PORT:-8040}:8040"
+    # It may change nothing in its own files, and gets no special
+    # powers.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+      proxy:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

@@ -6,3 +6,7 @@ seats.env*
 # Office game state (game/README.md). Keys are *.key, above.
 game/office.db*
 __pycache__/
+# Built Go programs (README.md, "The Go version").
+/mint-key
+/mint-key.exe
+dist/

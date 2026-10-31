@@ -20,6 +20,7 @@ let tallyDrawn = "";
 let confirming = null;  // id of the card asking "are you sure?"
 let modelsShown = "";
 let needLogin = false;
+let inDocker = false;   // Front Desk runs in Docker (gui/README.md)
 const drawn = new Map();      // card id -> [signature, element]
 const cancelled = new Map();  // card id -> note left in its place
 const pending = new Map();    // card id -> {busy} or {err} of a cancel
@@ -216,10 +217,23 @@ async function boot() {
   }
   $("#plain-http").hidden = !s.lan;
   needLogin = s.need_login;
+  if (s.docker) dockerHints();
   if (!s.csrf) return showLogin();
   csrf = s.csrf;
   showSeatUrl(s.seat_url);
   startLive();
+}
+
+// In Docker, the log and the settings live elsewhere: say where.
+function dockerHints() {
+  inDocker = true;
+  const code = (text) => h("code", { text });
+  $("#pw-hint").replaceChildren("It is in Front Desk's log (",
+    code("docker compose logs frontdesk"), "), or set as ",
+    code("FRONTDESK_PASSWORD"), " in seats.env.");
+  $("#seat-url-hint").replaceChildren("A guess, from the address you " +
+    "opened this page by. If seats use another, set ",
+    code("FRONTDESK_SEAT_URL"), " in .env.");
 }
 
 function showLogin() {
@@ -986,7 +1000,9 @@ function renderTally() {
   }
   if (own) {
     note += " Showing the proxy's own numbers: full history needs " +
-      "Front Desk to run as a user who can run docker compose.";
+      (inDocker ? "Front Desk to reach the database, at DATABASE_URL " +
+        "in seats.env." : "Front Desk to run as a user who can run " +
+        "docker compose.");
     // The proxy keeps each live card's spend, only since its last
     // refill if it refills; everything else only for today.
     if (!today) {

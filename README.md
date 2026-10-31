@@ -20,7 +20,9 @@ office building:
   carries on.
 - **The desk keeps a tally** of who used what, and what it cost.
 
-`mint-key.sh` prints the key cards. The steps below set everything
+`mint-key.sh` prints the key cards. (On Windows, or anywhere without
+bash, its twin `mint-key` does the same: see
+[the Go version](#the-go-version).) The steps below set everything
 up one at a time, and say what you should see after each one.
 
 Under the hood, the desk is a LiteLLM **proxy** (a middleman for AI
@@ -52,7 +54,8 @@ they first appear, and in the [glossary](#glossary).
   6. [Run the 3-check test](#step-6-the-3-check-test)
   7. [Give the key to a seat](#step-7-give-the-key-to-a-seat)
 - Using it: [minting more keys](#minting-more-keys),
-  [revoking](#revoking-a-key), [adding a model](#adding-a-model),
+  [the Go version](#the-go-version), [revoking](#revoking-a-key),
+  [adding a model](#adding-a-model),
   [day-to-day commands](#day-to-day-commands),
   [safety rules](#safety-rules)
 - Troubleshooting: [setting up](#troubleshooting-setting-up),
@@ -82,11 +85,14 @@ In `seats.env`: two different random `sk-` keys, one letters-and-digits
 password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and
 `OLLAMA_API_BASE`. Then run the [3-check test](#step-6-the-3-check-test).
 
-**Prefer clicking?** Once the proxy is up, `python3 gui/frontdesk.py`
-starts Front Desk, a web page at `http://127.0.0.1:8040` that makes
-and cancels key cards and shows the tally. Open that address in a
-browser on this machine, or add `--lan` to use it from your phone.
-See [gui/README.md](gui/README.md).
+**Prefer clicking?** Once the proxy is up,
+`docker compose --profile frontdesk up -d` starts Front Desk, a web
+page at `http://127.0.0.1:8040` that makes and cancels key cards and
+shows the tally. Like the proxy, it runs in Docker, so there is
+nothing else to install. Open that address in a browser on this
+machine, with the password that `docker compose logs frontdesk`
+shows. Phones can use it too, and it also runs with Python 3.11 or
+newer (`python3 gui/frontdesk.py`). See [gui/README.md](gui/README.md).
 
 ## One lock, many keys
 
@@ -135,7 +141,9 @@ aliases**: short names that `config.yaml` points at real models.
 
 Pick one computer as the **proxy machine**: always on, on the same
 network as your seats, running Linux or macOS. (On Windows, do every
-step inside WSL, with Docker Desktop's WSL integration turned on.)
+step inside **WSL**, Windows Subsystem for Linux: a Linux that runs
+inside Windows. `wsl --install` in PowerShell sets it up. Turn on
+Docker Desktop's WSL integration too.)
 Open a **terminal** (the window where you type commands) there and
 run:
 
@@ -153,14 +161,20 @@ in sealed boxes called **containers**, and Docker Compose starts
 several of them together. The first command prints a number only if
 Docker is running and your user may use it (if not, see
 [Troubleshooting: setting up](#troubleshooting-setting-up)). curl must
-be 7.76 or newer; Ubuntu 20.04 and RHEL 8 ship older ones.
+be 7.76 or newer; Ubuntu 20.04 and RHEL 8 ship older ones. Only
+`mint-key.sh` needs jq: skip it if you will mint with
+[Front Desk](gui/README.md) in Docker or with
+[the Go version](#the-go-version).
 
 ### Missing a tool?
 
 Ubuntu or Debian: `sudo apt install curl jq openssl git`.
-Fedora: `sudo dnf install curl jq openssl git`. Mac: `brew install jq`.
-Get Docker from docker.com. `mint-key.sh` also needs bash, which
-Linux and macOS have.
+Fedora: `sudo dnf install curl jq openssl git`. Mac:
+`brew install jq`, with Homebrew (an installer for Mac programs,
+from brew.sh). Get Docker from docker.com. `mint-key.sh` also needs
+bash, which Linux and macOS have. Minting from Windows, or a machine
+without bash, curl or jq? [The Go version](#the-go-version) needs
+none of them.
 
 ### Also: your Ollama server
 
@@ -208,7 +222,7 @@ ls
 ```
 
 **Success:** `ls` lists `compose.yaml`, `config.yaml`, `mint-key.sh`,
-`seats.env.example`, `README.md` and `LICENSE`. Run every later
+`seats.env.example` and `README.md`, among others. Run every later
 command from this folder. A new terminal starts in your home folder,
 so `cd` back here first.
 
@@ -330,6 +344,11 @@ not, the reason is on screen above the `cat` output; see
 [Troubleshooting: minting](#troubleshooting-minting). Careful when you
 run this again for the same name: minting fails with
 `already exists`, and `cat` still shows the old key from last time.
+
+Skipped jq in Step 1? Wherever this guide says `./mint-key.sh`, type
+`docker compose run --rm --no-deps frontdesk mint-key` (Docker builds
+Front Desk's image the first time), or `./mint-key` if you have
+[the Go version](#the-go-version).
 
 `.gitignore` keeps `.key` files out of git. The master key is never
 printed in full: the script hands it to curl through standard input,
@@ -500,6 +519,121 @@ key=$(./mint-key.sh desk --models local,claude --budget 20 \
   Names that start with `game-` are kept for the
   [office game](game/README.md).
 
+### The Go version
+
+`mint-key` (`mint-key.exe` on Windows) is `mint-key.sh` rewritten in
+**Go**, a programming language whose programs are a single file that
+needs nothing else installed: no bash, curl or jq. It runs in Windows
+cmd and PowerShell (Windows' two terminals), on macOS and on Linux.
+It takes the same flags, prints the same things and reads the same
+`seats.env`. On Linux and macOS, `./mint-key.sh` is all you need; the
+Go version is there for Windows, and for machines without bash, curl
+or jq.
+
+**Get it** in one of three ways:
+
+- **Download it**, once the repo has a release (until then, its
+  **Releases** list on GitHub is empty: use one of the other ways).
+  Under Releases, pick the file for your computer: `windows`,
+  `darwin` (macOS) or `linux`, then `amd64` (most PCs, older Macs)
+  or `arm64` (Macs with Apple chips, a 64-bit Raspberry Pi, Windows
+  on Arm). Unpack it, and move `mint-key` (or `mint-key.exe`) into
+  this folder, next to `seats.env`. The release's `SHA256SUMS` file
+  lists a **checksum** (a fingerprint of a file) for each download.
+  To check yours arrived whole, run this where you downloaded both:
+  `sha256sum -c SHA256SUMS --ignore-missing` should say `OK`. On a
+  Mac, type `shasum -a 256` in place of `sha256sum`. In PowerShell,
+  run `Get-FileHash <file>`; in cmd,
+  `certutil -hashfile <file> SHA256`. Compare what it prints with
+  that file's line in `SHA256SUMS`; capitals do not matter.
+- **Or build it**, with Go 1.24 or newer (from go.dev), in this
+  folder: `go build ./cmd/mint-key`. That makes `mint-key`, or
+  `mint-key.exe` on Windows. In WSL,
+  `GOOS=windows go build ./cmd/mint-key` makes `mint-key.exe` for
+  PowerShell and cmd.
+- **Or run it in Docker**, on the proxy machine: Front Desk's image
+  holds it, so there is nothing else to install.
+  `docker compose run --rm --no-deps frontdesk mint-key laptop`
+  mints (start the proxy first), and
+  [gui/README.md](gui/README.md#mint-keys-through-docker) shows more.
+
+**Run it** from this folder. On Linux and macOS, every
+`./mint-key.sh` line in this guide works with the Go version in its
+place. The same mint on Linux or macOS, in Windows cmd, and in
+PowerShell:
+
+```text
+./mint-key laptop --budget 2
+mint-key.exe laptop --budget 2
+.\mint-key.exe laptop --budget 2
+```
+
+To save the key in PowerShell, only if minting worked:
+
+```powershell
+$key = .\mint-key.exe laptop
+if ($LASTEXITCODE -eq 0) { $key | Set-Content laptop.key }
+```
+
+To revoke by the saved key in PowerShell:
+`.\mint-key.exe --revoke (Get-Content laptop.key)`. Put quotes
+around a list of models, as in `--models 'local,claude'`: there, a
+bare comma splits it in two. The guide's other lines around
+`./mint-key.sh`, such as the 3-check test, are for bash: run those
+in WSL, or on Linux or a Mac.
+
+It looks for `seats.env` in the folder you run it from, then in its
+own folder. To use another file, set `SEATS_ENV` to its path: in
+PowerShell, `$env:SEATS_ENV = 'C:\<path>\seats.env'`; in cmd,
+`set SEATS_ENV=C:\<path>\seats.env`. On a Mac, a downloaded
+`mint-key` may be stopped as coming from an "unidentified
+developer"; run `xattr -d com.apple.quarantine mint-key` once to
+allow it.
+
+**On Windows**, the repo folder is inside WSL (Step 1), and there
+`./mint-key.sh` works as on Linux. To mint from PowerShell instead,
+go to that folder by its Windows name: in WSL, `wslpath -w .` prints
+it, like `\\wsl.localhost\Ubuntu\home\<you>\local-verse-proxy`.
+In PowerShell, `cd` there and run `.\mint-key.exe`. cmd cannot use
+such a folder as its own: type `pushd` in place of `cd`, and it
+lends the folder a drive letter.
+
+**How it differs**, on purpose:
+
+- Errors from the proxy start with `the proxy returned error: 400
+  (Bad Request)`, where curl says `curl: (22) The requested URL
+  returned error: 400`; a hint may follow. LiteLLM's own message
+  still comes on the next line.
+- With no answer at all, it says `Failed to connect to the proxy at
+  <address> (<reason>)` and what to do, where curl says `(7)`, `(52)`
+  or `(56)`.
+- A failed mint exits with code 1, where the script's code is 4 (from
+  jq). Usage and value mistakes are 2 in both.
+- If the proxy says yes but sends no key, it says so and exits 1; the
+  script prints `null`.
+- It looks for `seats.env` in the current folder before its own.
+- It never runs anything in `seats.env`. Where bash would run
+  `$(...)` or backticks, `mint-key` refuses, naming the line. Windows
+  line endings (from Notepad, say) are fine; bash trips on them.
+- It gives up after 25 seconds without an answer; curl keeps waiting.
+  A proxy that got the request may still make the key after that, so
+  the message says so: revoke the seat, then mint again.
+- A `PROXY_URL` that ends in `/` works; the script gets `404`.
+- Like curl, it goes through the **web proxy** (a middleman some
+  networks put in front of all web traffic) set in `HTTPS_PROXY` or
+  `HTTP_PROXY`, except for the hosts in `NO_PROXY`. Unlike curl, it
+  never does so for `localhost` or `127.0.0.1`, it reads an
+  uppercase `HTTP_PROXY` (curl reads only `http_proxy`), and it
+  ignores `ALL_PROXY`.
+- It does not follow a redirect (an answer that says "ask elsewhere");
+  it says where the redirect pointed, so the master key goes nowhere
+  else.
+- A budget too long for a computer to hold as a number (hundreds of
+  digits) is refused as a bad `--budget`.
+- If a message from the proxy ever held the master key, it would show
+  only as `sk-...` and the last 4 characters.
+- `mint-key --version` prints its version.
+
 ## Revoking a key
 
 Revoke a key when a device is lost, someone leaves, or a key may have
@@ -564,6 +698,11 @@ docker compose up -d --force-recreate proxy   # apply edits
 - Use the last line after editing `seats.env` or `config.yaml`; a
   plain `restart` does not reread `seats.env`. After a `seats.env`
   edit it recreates `db` too, which is harmless: keys stay.
+- Running [Front Desk](gui/README.md) in Docker? Add
+  `--profile frontdesk` to `down`, or Front Desk keeps running. After
+  a `seats.env` edit, also run
+  `docker compose --profile frontdesk up -d`, or Front Desk keeps the
+  old settings, master key included.
 - Keys and spending live in a Docker **volume** (storage that
   survives restarts) called `local-verse-proxy_pgdata`. Never add
   `-v` to `docker compose down`: that deletes the volume and every
@@ -595,8 +734,9 @@ docker compose up -d --force-recreate proxy   # apply edits
    Firewall it so only the proxy machine can reach it. (Ollama on the
    proxy machine? See [the ufw entry](#troubleshooting-the-proxy).)
 8. **Master key leaked?** Put a new one in `seats.env` and run
-   `docker compose up -d --force-recreate proxy`. Seat keys keep
-   working, and so does any key someone minted with the old master
+   `docker compose up -d --force-recreate proxy` (with Front Desk in
+   Docker, then `docker compose --profile frontdesk up -d` too). Seat
+   keys keep working, and so does any key someone minted with the old master
    key. In a browser on the proxy machine, open
    `http://localhost:4000/ui`, log in as `admin` with the new master
    key as password, and delete every key you did not make.
@@ -641,6 +781,12 @@ docker compose up -d --force-recreate proxy   # apply edits
 - **Usage text** (`Mint a scoped key for one seat...`): the seat name
   is missing or starts with `-`, an option is misspelled or has no
   value, or a space slipped into `--models local, claude`.
+- **`jq: command not found`** (or `curl: command not found`):
+  `mint-key.sh` needs it. Install it as Step 1 shows, or mint with
+  [the Go version](#the-go-version) or
+  `docker compose run --rm --no-deps frontdesk mint-key <seat>`
+  ([Front Desk in Docker](gui/README.md#mint-keys-through-docker)),
+  which need neither.
 - **`curl: (7) Failed to connect`**, **`(52) Empty reply from server`**
   or **`(56) Recv failure`**: the proxy is not running, or is still
   starting. Wait until [Is it up?](#is-it-up) prints `401`, then mint
@@ -648,11 +794,32 @@ docker compose up -d --force-recreate proxy   # apply edits
 - **`curl: (22)` with `400`, then `... already exists`**: that seat
   name is taken. Run `./mint-key.sh --revoke-seat <seat>`, or pick a
   new name.
+- **With the Go `mint-key`**, the curl lines in this list read
+  differently: `Failed to connect to the proxy at ...` for `(7)`,
+  `(52)` and `(56)`, and `the proxy returned error: 400` (or `401`)
+  for `curl: (22)`. Causes and fixes are the same.
+- **`seats.env line 9: $(...) would run a command`**, or another
+  `seats.env line` message from the Go `mint-key`: that line has
+  shell code in it, which `mint-key.sh` would run. Make it a plain
+  `NAME=value` line.
+- **`seats.env seems to be saved as UTF-16`**: Windows PowerShell's
+  `>` and Notepad's "Unicode" save files that way. Save it again as
+  UTF-8 (in Notepad: File, Save as, then Encoding: UTF-8).
+- **`(no answer within 25 seconds)`**, then
+  **`it may have made the key anyway`**, from the Go `mint-key`: the
+  proxy is slow, perhaps busy or just started. The key may be made
+  but was never shown: run the same program with
+  `--revoke-seat <seat>` (`./mint-key --revoke-seat <seat>`; in
+  PowerShell `.\mint-key.exe --revoke-seat <seat>`; in Docker
+  `docker compose run --rm --no-deps frontdesk mint-key
+  --revoke-seat <seat>`), then mint again.
 - **`curl: (22)` with `401`**, then `Invalid proxy server token`:
   the proxy did not accept the master key, usually because
   `seats.env` changed after it started. Run
-  `docker compose up -d --force-recreate proxy`. The message shows
-  only the key's last 4 characters and a hash, not the key.
+  `docker compose up -d --force-recreate proxy`. Minting through
+  Front Desk in Docker? Run `docker compose --profile frontdesk up -d`
+  instead. The message shows only the key's last 4 characters and a
+  hash, not the key.
 
 ## Troubleshooting: the proxy
 
@@ -725,8 +892,8 @@ change it, put `LITELLM_TAG=<tag>` in a file named `.env` next to
 
 **Does a seat ever see my real keys?** No, only its own virtual key.
 The real keys stay in `seats.env` on the proxy machine. There,
-`compose.yaml` hands that file to both containers, so the `db`
-container can see every secret too.
+`compose.yaml` hands that file to every container (Front Desk's too,
+if you run it), so the `db` container can see every secret too.
 
 **Can I run `mint-key.sh` from another computer?** Best not: you
 would copy every secret there, and the master key would cross your
@@ -740,18 +907,37 @@ network over plain HTTP.
 - `seats.env.example`: the template for your secrets file.
 - `seats.env`: your real secrets, made in Step 3. Never commit it.
 - `mint-key.sh`: mints and revokes seat keys, using the master key.
+- `cmd/mint-key/`: the same in Go, for Windows and machines without
+  bash. See [the Go version](#the-go-version).
+- `internal/`: Go code that `mint-key` uses, for later Go programs to
+  share too: `seats` reads `seats.env`, `litellm` talks to the proxy.
+- `go.mod`: names the Go module (a Go project); `go build` reads it.
+- `tests/mint-parity.sh`: runs `mint-key.sh` and the Go `mint-key`
+  side by side against your running proxy, and compares them.
+- `.github/workflows/`: what GitHub runs on every push (`ci.yml`:
+  tests and checks), and on a version tag like `v1.0.0`
+  (`release.yml`: builds the downloads).
 - `gui/`: Front Desk, an optional web page for key cards and the
-  tally. It runs `mint-key.sh` for you. See
+  tally. It runs `mint-key.sh` for you (in Docker, the Go
+  `mint-key`). See
   [gui/README.md](gui/README.md).
+- `gui/Dockerfile`: builds Front Desk's Docker image, with the Go
+  `mint-key` in it. `gui/requirements-docker.txt` lists the one
+  Python package the image adds, at an exact version.
 - `compose.yaml`: runs the proxy and Postgres, with the database in
-  the `pgdata` volume.
+  the `pgdata` volume; with `--profile frontdesk`, Front Desk too.
+- `.env` (hidden, optional): settings for Docker Compose itself, such
+  as `LITELLM_TAG` and Front Desk's `FRONTDESK_` settings. You make
+  it; git ignores it.
 - `.gitignore` (hidden; `ls -a` shows it): keeps `seats.env` and its
-  copies, `.env` and `*.key` files out of git.
+  copies, `.env`, `*.key` files and built `mint-key` programs out of
+  git.
+- `.dockerignore` (hidden): what Docker may not see when it builds an
+  image. It keeps `seats.env`, `.env`, keys and game state out.
 - `*.key`: seat keys you saved. Never commit them.
 - `game/`: an optional office game played with seat keys, where
   finished work scores and burned tokens do not. See
   [game/README.md](game/README.md).
-- `LICENSE`: the MIT license.
 
 ## Glossary
 
@@ -760,12 +946,18 @@ network over plain HTTP.
   (or per refill, with `--budget-duration`).
 - **Docker:** runs programs in sealed boxes called containers.
 - **Env file:** a text file of `NAME=value` lines, here `seats.env`.
+- **Go:** a programming language. A Go program is one file that runs
+  without anything else installed.
+- **Image:** a ready-made program bundle that Docker runs as a
+  container.
 - **Master key:** `LITELLM_MASTER_KEY`, the admin key that makes and
   cancels other keys. Never give it out.
 - **Mint, revoke:** create a virtual key; cancel one.
 - **Ollama:** a program that runs AI models on your own hardware.
 - **Port:** a numbered door on a computer. The proxy uses 4000.
 - **Postgres:** a database. Here it stores keys, budgets and spending.
+- **Profile:** a named group of optional containers in
+  `compose.yaml`, like `frontdesk`, that start only when asked for.
 - **Proxy:** a middleman between apps and the real AI services.
 - **Salt key:** `LITELLM_SALT_KEY`; encrypts stored credentials.
 - **Seat:** one person, computer or app with its own key.
@@ -774,6 +966,8 @@ network over plain HTTP.
   Front Desk shows refill times in your own time.
 - **Virtual key:** a seat's own key, limited by models, budget and
   expiry, that works only through this proxy.
+- **WSL:** Windows Subsystem for Linux, a Linux that runs inside
+  Windows. `wsl --install` in PowerShell sets it up.
 
 ## License
 

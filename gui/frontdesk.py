@@ -7,6 +7,11 @@
 Runs on the proxy machine, next to seats.env. It reads the master key
 from there, like mint-key.sh does, and never sends it to a browser.
 Minting and revoking go through ./mint-key.sh. Stdlib only.
+
+In Docker, gui/Dockerfile runs it with --docker. Then Compose passes
+seats.env in as environment variables, minting goes through the Go
+mint-key, and the tally comes straight from Postgres through psycopg,
+the one package the image adds. The password is always asked for.
 """
 
 import argparse
@@ -23,6 +28,7 @@ import queue
 import re
 import secrets
 import select
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -69,6 +75,14 @@ KEY_RE = re.compile(r"sk-[A-Za-z0-9_-]{8,200}")
 HOST_RE = re.compile(r"[A-Za-z0-9.-]{1,253}|[0-9A-Fa-f:]{2,39}")
 # Key-like text in an error message: keys, key ends, hashes.
 SECRET_RE = re.compile(r"sk-\S*|[0-9A-Fa-f]{32,}")
+# --docker: the port compose.yaml publishes the proxy on, for seats.
+SEAT_PORT = 4000
+# --docker: all of mint-key's environment. Not the database password
+# or the model keys, which it never needs.
+MINT_ENV = ("PATH", "HOME", "LANG", "TZ", "SEATS_ENV", "PROXY_URL",
+            "LITELLM_MASTER_KEY", "LITELLM_SALT_KEY", "DEFAULT_MODELS",
+            "DEFAULT_BUDGET", "DEFAULT_DURATION")
+LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
 # Spend per seat and per model in one round trip, for today (UTC) or
 # for the days before it. Cancelled cards keep their seat name via the
@@ -181,18 +195,25 @@ def merge_tally(hist, today):
 
 
 class Settings:
-    """seats.env, reread when it changes, like mint-key.sh does."""
+    """seats.env, reread when it changes, like mint-key.sh does. Given
+    environ instead (with --docker), the same settings from there:
+    Compose passes seats.env in as environment variables, once."""
 
-    def __init__(self, path):
-        self.path = Path(path).resolve()
+    def __init__(self, path, environ=None):
+        self.environ = environ
+        self.path = Path(path).resolve() if environ is None else None
         self.mtime = None
         self.load()
 
     def load(self):
-        mtime = self.path.stat().st_mtime
-        env = read_env(self.path)
-        self.mtime = mtime
+        if self.environ is None:
+            mtime = self.path.stat().st_mtime
+            env = read_env(self.path)
+            self.mtime = mtime
+        else:
+            env = dict(self.environ)
         self.master = env.get("LITELLM_MASTER_KEY", "")
+        self.db_url = env.get("DATABASE_URL", "")
         url = urlsplit(env.get("PROXY_URL") or "http://localhost:4000")
         self.https = url.scheme == "https"
         self.host = url.hostname or "localhost"
@@ -210,11 +231,14 @@ class Settings:
             any(w in k for w in ("KEY", "PASSWORD", "SECRET", "TOKEN")))]
         self.warnings = []
         if "change-me" in self.master + env.get("LITELLM_SALT_KEY", ""):
+            tool = "mint-key.sh" if self.environ is None else "mint-key"
             self.warnings.append(
-                "seats.env still has change-me values, so mint-key.sh "
+                f"seats.env still has change-me values, so {tool} "
                 "will refuse to run. Do README Step 3a.")
 
     def reload_if_changed(self):
+        if self.environ is not None:
+            return  # a new seats.env means a new container
         try:
             if self.path.stat().st_mtime != self.mtime:
                 self.load()
@@ -235,6 +259,11 @@ class ProxyError(Exception):
 MASTER_REFUSED = ("The proxy did not accept the master key. If seats.env "
                   "changed, run: docker compose up -d --force-recreate "
                   "proxy")
+# In Docker, Front Desk keeps the seats.env it started with, so it may
+# be the one out of date. This line makes both new, as needed.
+MASTER_REFUSED_DOCKER = ("Front Desk and the proxy have different master "
+                         "keys. If seats.env changed, run: docker compose "
+                         "--profile frontdesk up -d")
 
 
 class Proxy:
@@ -270,7 +299,8 @@ class Proxy:
     def json(self, path):
         status, body = self.get(path)
         if status == 401:
-            raise ProxyError(MASTER_REFUSED)
+            raise ProxyError(MASTER_REFUSED if self.s.environ is None
+                             else MASTER_REFUSED_DOCKER)
         if status != 200:
             hint = " Its database may be down: run docker compose ps." \
                 if status >= 500 else ""
@@ -286,6 +316,10 @@ class Proxy:
 
 class TallyError(Exception):
     pass
+
+
+class Stale(TallyError):
+    """A question failed on a connection kept from before."""
 
 
 class Psql:
@@ -374,6 +408,111 @@ class Psql:
         if "{" not in text:
             raise TallyError("psql gave no answer")
         return json.loads(text[text.index("{"):])
+
+
+class Pg:
+    """With --docker: the same questions as Psql, read only too, asked
+    of Postgres at DATABASE_URL through psycopg, which only the Docker
+    image has. Same answers: psycopg reads the JSON with json.loads.
+
+    Each question runs in a helper thread, so one the database never
+    answers (a paused container, say) times out, as with psql.
+    """
+
+    def __init__(self, url):
+        self.url = url
+        self.conn = None    # idle between questions
+        self.lock = threading.Lock()
+        self.retry_at = 0.0
+        self.fails = 0      # failed tries in a row
+
+    def connect(self):
+        import psycopg  # in the Docker image only: see gui/Dockerfile
+        conn = psycopg.connect(
+            self.url, autocommit=True, connect_timeout=5,
+            application_name="frontdesk",
+            options="-c default_transaction_read_only=on "
+                    "-c statement_timeout=5s")
+        conn.read_only = True  # each transaction says BEGIN READ ONLY
+        return conn
+
+    def work(self, conn, sql, box):
+        try:
+            if conn is None:
+                conn = self.connect()
+            with conn.transaction():
+                # prepare=True: one statement per question, never more.
+                got = conn.execute(sql, prepare=True).fetchone()[0]
+        except Exception as e:  # psycopg.Error, or no psycopg at all
+            got = e
+        try:
+            box.put_nowait((conn, got))
+        except queue.Full:  # query() gave up on this one: tidy up
+            if conn is not None:
+                conn.close()
+
+    def query(self, sql, timeout=8.0):
+        with self.lock:
+            if time.monotonic() < self.retry_at:
+                raise TallyError("waiting before trying the database "
+                                 "again")
+            try:
+                try:
+                    rows = self._query(sql, timeout)
+                except Stale:
+                    # The connection kept from last time broke, as when
+                    # the database restarts. A new one may work now.
+                    self.drop()
+                    rows = self._query(sql, timeout)
+            except TallyError:
+                self.drop()
+                # A database that is just restarting is back within
+                # seconds: try again soon once, then every 30 s.
+                self.fails += 1
+                self.retry_at = time.monotonic() + (
+                    3 if self.fails == 1 else 30)
+                raise
+            self.fails = 0
+            return rows
+
+    def _query(self, sql, timeout):
+        if not self.url:
+            raise TallyError("DATABASE_URL is not set in seats.env")
+        kept = self.conn is not None
+        box = queue.Queue(1)
+        threading.Thread(target=self.work, args=(self.conn, sql, box),
+                         daemon=True).start()
+        try:
+            conn, got = box.get(timeout=timeout)
+        except queue.Empty:
+            try:
+                box.put_nowait(None)  # the late answer finds it full
+            except queue.Full:
+                conn, got = box.get_nowait()  # it came just now
+            else:
+                self.conn = None  # still busy: its thread closes it
+                raise TallyError("the database did not answer in time")
+        self.conn = conn
+        if isinstance(got, Exception):
+            said = str(got).strip().splitlines()
+            raise (Stale if kept else TallyError)(
+                said[0] if said else type(got).__name__)
+        if not isinstance(got, dict):
+            raise TallyError("the database gave no answer")
+        return got
+
+    def drop(self):
+        conn, self.conn = self.conn, None
+        if conn is not None:
+            conn.close()
+
+    def stop(self):
+        # A question still running keeps its connection until it ends.
+        if self.lock.acquire(blocking=False):
+            try:
+                self.drop()
+            finally:
+                self.lock.release()
 
 
 def seat_state(k, now):
@@ -892,16 +1031,27 @@ class App:
         self.desk = desk
         self.gate = gate
         self.lan = args.lan
-        self.mint = REPO / "mint-key.sh"
+        self.docker = args.docker
+        if self.docker:
+            self.tool = "mint-key"  # the Go one, in the image
+            self.mint = Path(shutil.which("mint-key") or
+                             "/usr/local/bin/mint-key")
+        else:
+            self.tool = "mint-key.sh"
+            self.mint = REPO / "mint-key.sh"
         self.work = threading.Lock()  # one mint or revoke at a time
         # One name per port, so two desks on one machine don't mix.
-        self.cookie_name = f"fd_{args.port}"
+        self.cookie_name = f"fd_{args.public_port}"
         self.local_hosts = {f"{h}:{args.port}" for h in
                             ("127.0.0.1", "localhost", "[::1]")}
-        me = socket.gethostname().lower()
-        self.names = {"localhost", me, me + ".local",
-                      me.split(".")[0] + ".local",
-                      *(n.lower() for n in args.host)}
+        if self.docker:
+            # The container's own name means nothing to a browser.
+            self.names = {"localhost", *(n.lower() for n in args.host)}
+        else:
+            me = socket.gethostname().lower()
+            self.names = {"localhost", me, me + ".local",
+                          me.split(".")[0] + ".local",
+                          *(n.lower() for n in args.host)}
         self.static = {}
         types = {".html": "text/html; charset=utf-8",
                  ".js": "text/javascript; charset=utf-8",
@@ -919,15 +1069,17 @@ class App:
     def host_ok(self, host):
         """Blocks DNS rebinding: another site's name pointed at this
         machine. Local: 127.0.0.1 only. --lan: an IP address, or a
-        name this machine goes by (or one given with --host)."""
-        if not self.lan:
+        name this machine goes by (or one given with --host).
+        --docker: an IP address, localhost, or a name listed in
+        FRONTDESK_HOSTS, on any port, since Docker picks the port."""
+        if not self.lan and not self.docker:
             return host in self.local_hosts
         try:
             u = urlsplit("//" + host)
             name, port = u.hostname, u.port or 80
         except ValueError:
             return False
-        if not name or port != self.args.port:
+        if not name or (not self.docker and port != self.args.port):
             return False
         if name in self.names:
             return True
@@ -938,7 +1090,12 @@ class App:
         return True
 
     def run_mint(self, args):
-        env = dict(os.environ, SEATS_ENV=str(self.settings.path))
+        if self.docker:
+            # Settings come from the environment, as they came to us;
+            # SEATS_ENV names the image's empty stand-in file.
+            env = {k: v for k, v in os.environ.items() if k in MINT_ENV}
+        else:
+            env = dict(os.environ, SEATS_ENV=str(self.settings.path))
         return subprocess.run([str(self.mint), *args], cwd=REPO, env=env,
                               capture_output=True, text=True, timeout=30)
 
@@ -947,22 +1104,32 @@ class App:
         looks like a key or a hash."""
         t = SECRET_RE.sub("[hidden]", self.settings.scrub(text or ""))
         last = [x for x in t.strip().splitlines() if x.strip()][-1:]
-        log("mint-key.sh said: " + (last[0][:300] if last else
-                                    "nothing"))
+        log(f"{self.tool} said: " + (last[0][:300] if last else
+                                     "nothing"))
         if "already exists" in t:
             return ("That seat name is taken. Cancel its card first, or "
                     "pick a new name, like laptop-2.")
         if "Authentication Error" in t or "error: 401" in t:
-            return MASTER_REFUSED
+            return MASTER_REFUSED_DOCKER if self.docker else MASTER_REFUSED
         if "No keys found" in t or "error: 404" in t:
             return "No such key card. It may be cancelled already."
+        # The Go mint-key: the proxy got the request, but was too slow.
+        if "may have made the key anyway" in t:
+            return ("The proxy took too long to answer, and may have made "
+                    "the card anyway. If it shows up in a few seconds, "
+                    "cancel it and make it again: its key was never "
+                    "shown.")
+        if "may have revoked it anyway" in t:
+            return ("The proxy took too long to answer, and may have "
+                    "cancelled the card anyway. Check again in a few "
+                    "seconds.")
         if "Failed to connect" in t or "(7)" in t or "(52)" in t:
             return ("The proxy is not answering. Is it running? Check "
                     "with: docker compose ps")
         if "change-me" in t:
             return "seats.env still has change-me values. Do Step 3a."
-        return "mint-key.sh said: " + (last[0][:300] if last else
-                                       "nothing (it failed)")
+        return f"{self.tool} said: " + (last[0][:300] if last else
+                                        "nothing (it failed)")
 
 
 SECURITY_HEADERS = (
@@ -1115,6 +1282,12 @@ class Handler(BaseHTTPRequestHandler):
         return self.app.host_ok(self.headers.get("Host", ""))
 
     def wrong_host(self):
+        if self.app.docker:
+            return self.fail(421, "Open Front Desk by this computer's "
+                             "IP address, like http://192.168.1.20:"
+                             f"{self.app.args.public_port}, or add the "
+                             "name you used to FRONTDESK_HOSTS in "
+                             ".env (gui/README.md).")
         if self.app.lan:
             return self.fail(421, "Open Front Desk by this computer's "
                              "address, like http://192.168.1.20:"
@@ -1147,8 +1320,10 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
         except Exception as e:
             log("error: " + self.app.settings.scrub(repr(e))[:200])
-            self.fail(500, "Something went wrong at the desk. "
-                      "See the terminal where Front Desk runs.")
+            self.fail(500, "Something went wrong at the desk. " + (
+                "See its log: docker compose logs frontdesk"
+                if self.app.docker else
+                "See the terminal where Front Desk runs."))
 
     def route_get(self, path):
         app = self.app
@@ -1164,7 +1339,8 @@ class Handler(BaseHTTPRequestHandler):
         csrf = app.gate.csrf_for(self.cookie(), self.addr())
         if path == "/api/session":
             return self.send(200, {
-                "lan": app.lan,
+                "lan": app.lan or app.docker and self.over_network(),
+                "docker": app.docker,
                 "need_login": app.gate.password is not None,
                 "csrf": csrf,
                 "seat_url": self.seat_url() if csrf else None})
@@ -1319,22 +1495,46 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, {"csrf": csrf, "seat_url": self.seat_url()},
                   headers=(("Set-Cookie", line),))
 
+    def host_name(self):
+        """The name or address this viewer typed, or "" if odd."""
+        try:
+            name = urlsplit("//" + self.headers.get("Host", "")).hostname
+        except ValueError:
+            return ""
+        return name if name and HOST_RE.fullmatch(name) else ""
+
+    def over_network(self):
+        """With --docker: did this page come over a network? Then it
+        warns of plain http. Behind Docker's port mapping, the address
+        the viewer typed is all there is to go by."""
+        name = self.host_name()
+        try:
+            return not ipaddress.ip_address(name).is_loopback
+        except ValueError:
+            return name != "localhost"
+
     def seat_url(self):
         """The base URL a seat types in: this machine, proxy port."""
         app = self.app
         if app.args.seat_url:
             return app.args.seat_url
-        host = None
-        if app.lan:
-            # The address this viewer used already works on the LAN.
-            name = urlsplit("//" + self.headers.get("Host", "")).hostname
-            if name and HOST_RE.fullmatch(name) and \
-                    name not in ("localhost", "127.0.0.1", "::1"):
-                host = name
-        host = host or lan_ip() or "<proxy-ip>"
+        if app.docker:
+            # A container can't see the computer's own address. The
+            # proxy is published on the one this viewer typed, so use
+            # it; the page says to set FRONTDESK_SEAT_URL if wrong.
+            host, port = self.host_name() or "<proxy-ip>", SEAT_PORT
+        else:
+            host = None
+            if app.lan:
+                # The address this viewer used already works on the LAN.
+                name = self.host_name()
+                if name and name not in LOOPBACK:
+                    host = name
+            host, port = host or lan_ip() or "<proxy-ip>", \
+                app.settings.port
         if ":" in host:
             host = f"[{host}]"
-        return f"http://{host}:{app.settings.port}"
+        return f"http://{host}:{port}"
 
     def mint(self, data):
         app, d = self.app, self.app.desk
@@ -1431,6 +1631,52 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, {"ok": True, "seat": card["seat"]})
 
 
+AGAIN = "then run: docker compose --profile frontdesk up -d"
+
+
+def docker_settings(args):
+    """--docker: Compose hands seats.env over as environment variables
+    (env_file in compose.yaml), FRONTDESK_PASSWORD among them. The
+    other FRONTDESK_ settings come from its shell or .env: the port it
+    shows the page on, the names it may go by, the seats' base URL."""
+    settings = Settings(None, os.environ)
+    if not settings.master:
+        sys.exit("LITELLM_MASTER_KEY is not set. Put it in seats.env, "
+                 "next to compose.yaml (README Step 3a), " + AGAIN)
+    port = os.environ.get("FRONTDESK_PORT", "")
+    args.public_port = int(port) if port.isdigit() and \
+        0 < int(port) < 65536 else args.port
+    hosts = os.environ.get("FRONTDESK_HOSTS", "")
+    args.host += [n for n in re.split(r"[\s,]+", hosts) if n]
+    args.seat_url = args.seat_url or \
+        os.environ.get("FRONTDESK_SEAT_URL") or None
+    return settings
+
+
+def docker_banner(args, password, shown):
+    port = args.public_port
+    bind = os.environ.get("FRONTDESK_BIND", "127.0.0.1")
+    try:
+        local = ipaddress.ip_address(bind).is_loopback
+    except ValueError:
+        local = bind == "localhost"
+    print("Front Desk is open, in Docker.")
+    print(f"  On this computer: http://127.0.0.1:{port}")
+    if local:
+        print("  Other devices: put FRONTDESK_BIND=0.0.0.0 in .env "
+              "(gui/README.md)")
+    else:
+        print(f"  On your network:  http://<proxy-ip>:{port}")
+        print("  Plain http: use it only on a network you trust.")
+    if shown:
+        print(f"  Password, new at each start: {password}")
+        print("  To keep one, set FRONTDESK_PASSWORD in seats.env (12 "
+              "characters or more), " + AGAIN)
+    else:
+        print("  Password: the one in FRONTDESK_PASSWORD in seats.env")
+    print("Stop it with: docker compose stop frontdesk", flush=True)
+
+
 def main():
     if sys.version_info < (3, 11):
         sys.exit("Front Desk needs Python 3.11 or newer.")
@@ -1452,39 +1698,55 @@ def main():
                     default=os.environ.get("SEATS_ENV",
                                            str(REPO / "seats.env")),
                     help="secrets file (default: seats.env)")
+    ap.add_argument("--docker", action="store_true",
+                    help="how gui/Dockerfile runs it: settings from "
+                    "the environment, on 0.0.0.0, with a password")
     args = ap.parse_args()
 
-    try:
-        settings = Settings(args.env)
-    except OSError:
-        sys.exit(f"missing {args.env}: do README Step 3 first")
-    if not settings.master:
-        sys.exit(f"LITELLM_MASTER_KEY: not set in {settings.path}")
+    if args.docker:
+        settings = docker_settings(args)
+    else:
+        args.public_port = args.port
+        try:
+            settings = Settings(args.env)
+        except OSError:
+            sys.exit(f"missing {args.env}: do README Step 3 first")
+        if not settings.master:
+            sys.exit(f"LITELLM_MASTER_KEY: not set in {settings.path}")
 
     # Read once, then gone from the environment: no child gets it.
     password = os.environ.pop("FRONTDESK_PASSWORD", None) or None
-    if args.lan or args.login:
+    # In Docker, everyone may come through one port mapping: the
+    # proxy machine can't be told from a phone, so all log in.
+    lan = args.lan or args.docker
+    if lan or args.login:
         if password and len(password) < 12:
-            sys.exit("FRONTDESK_PASSWORD must be 12 characters or more.")
+            sys.exit("FRONTDESK_PASSWORD must be 12 characters or more" +
+                     (". Fix it in seats.env, " + AGAIN if args.docker
+                      else "."))
         shown = password is None
         password = password or make_password()
     else:
         password = None
 
-    desk = Desk(settings, Psql(REPO), args.lan)
+    tally = Pg(settings.db_url) if args.docker else Psql(REPO)
+    desk = Desk(settings, tally, lan)
     app = App(args, settings, desk, Gate(password))
-    bind = "0.0.0.0" if args.lan else "127.0.0.1"
+    bind = "0.0.0.0" if lan else "127.0.0.1"
     try:
         server = Server((bind, args.port), Handler)
     except OSError as e:
         sys.exit(f"cannot use port {args.port}: {e.strerror}. "
                  f"Try --port {args.port + 1}.")
     server.app = app
-    if args.lan:
+    if lan:
         server.per_device = MAX_PER_DEVICE
     threading.Thread(target=desk.run, daemon=True).start()
     desk.kick.set()  # one check now: psql's ~150 ms start is paid here
 
+    if args.docker:
+        docker_banner(args, password, shown)
+        return serve(server, desk)
     print("Front Desk is open.")
     print(f"  On this computer: http://127.0.0.1:{args.port}")
     if args.lan:
@@ -1499,6 +1761,11 @@ def main():
         print("  Anyone logged in to this computer can use it; on a "
               "shared one, add --login.")
     print("Stop it with Ctrl+C.", flush=True)
+    serve(server, desk)
+
+
+def serve(server, desk):
+    # Docker stops it the same way: STOPSIGNAL SIGINT in gui/Dockerfile.
     try:
         server.serve_forever()
     except KeyboardInterrupt:

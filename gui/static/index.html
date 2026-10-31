@@ -41,8 +41,9 @@
       <label for="pw">Front Desk password</label>
       <input id="pw" type="password" autocomplete="current-password"
              required>
-      <p class="small">It was printed in the terminal where Front
-        Desk started, or set in <code>FRONTDESK_PASSWORD</code>.</p>
+      <p id="pw-hint" class="small">It was printed in the terminal
+        where Front Desk started, or set in
+        <code>FRONTDESK_PASSWORD</code>.</p>
       <button type="submit" class="primary wide">Open the desk</button>
       <p id="login-msg" class="msg" role="alert"></p>
     </form>
@@ -57,8 +58,9 @@
         <button id="copy-seat-url" type="button">Copy</button>
       </div>
       <p class="small">The base URL for every seat, with its own key
-        card. A guess at this machine's address: if it is wrong,
-        start Front Desk with <code>--seat-url</code>.</p>
+        card. <span id="seat-url-hint">A guess at this machine's
+        address: if it is wrong, start Front Desk with
+        <code>--seat-url</code>.</span></p>
     </div>
     <div id="cards-list" class="grid"></div>
     <p class="small">A <b>key card</b> is a seat's own key: it works

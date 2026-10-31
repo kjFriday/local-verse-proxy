@@ -1,0 +1,263 @@
+// Package litellm calls a LiteLLM proxy's admin API with the master
+// key: minting and revoking virtual keys, for now. mint-key uses it;
+// Front Desk and the office game can, once they are in Go.
+//
+// The master key goes only in the Authorization header of requests to
+// the proxy. It is never logged, and it is cut out of every error.
+package litellm
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptrace"
+	"net/url"
+	"strings"
+	"sync/atomic"
+	"time"
+)
+
+// DefaultTimeout is how long one request may take, from connecting to
+// the last byte of the answer. It is under the 30 seconds Front Desk
+// gives mint-key.sh, so a slow proxy gets a message, not a kill.
+const DefaultTimeout = 25 * time.Second
+
+// maxAnswer is the most of an answer that is read.
+const maxAnswer = 1 << 20
+
+// Client talks to one proxy. Its methods may be called at once from
+// several goroutines.
+type Client struct {
+	base   *url.URL
+	master string
+	http   *http.Client
+
+	// UserAgent names the program in each request.
+	UserAgent string
+}
+
+// New makes a Client for the proxy at baseURL, like
+// http://localhost:4000. As with curl, a URL with no scheme means
+// http://. timeout 0 means DefaultTimeout.
+//
+// Requests honour HTTPS_PROXY, HTTP_PROXY and NO_PROXY (and their
+// lowercase forms), except that localhost and loopback addresses such
+// as 127.0.0.1 are always reached directly. Redirects are not
+// followed, so the master key goes nowhere else.
+func New(baseURL, masterKey string, timeout time.Duration) (*Client,
+	error) {
+	u, err := ParseBase(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	if masterKey == "" {
+		return nil, errors.New("no master key")
+	}
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = http.ProxyFromEnvironment
+	return &Client{
+		base:   u,
+		master: masterKey,
+		http: &http.Client{
+			Transport:     tr,
+			Timeout:       timeout,
+			CheckRedirect: noRedirects,
+		},
+		UserAgent: "local-verse-proxy",
+	}, nil
+}
+
+func noRedirects(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
+// ParseBase checks a proxy address, such as PROXY_URL in seats.env.
+// It adds http:// if no scheme is given and drops a trailing slash.
+// Its error starts "is not a web address", for the caller to name
+// the setting in front; it leaves out the address, which might hold
+// a password.
+func ParseBase(s string) (*url.URL, error) {
+	raw := strings.TrimSpace(s)
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err == nil && u.Scheme != "http" && u.Scheme != "https" {
+		err = errors.New("it must start with http:// or https://")
+	} else if err == nil && u.Host == "" {
+		err = errors.New("it has no host name")
+	} else if err == nil && (u.RawQuery != "" || u.Fragment != "") {
+		err = errors.New("it may not have a ? or # part")
+	}
+	if err != nil {
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
+		return nil, fmt.Errorf("is not a web address (%v). It "+
+			"should look like http://localhost:4000", err)
+	}
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawPath = ""
+	return u, nil
+}
+
+// BaseURL is the proxy's address, without any password in it.
+func (c *Client) BaseURL() string { return c.base.Redacted() }
+
+// Post sends in as JSON to path, such as /key/generate, and decodes a
+// JSON answer into out. A nil out skips the answer.
+func (c *Client) Post(ctx context.Context, path string, in, out any) error {
+	body, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	return c.do(ctx, http.MethodPost, path, body, out)
+}
+
+// Get asks for path, such as /key/info?key=..., and decodes the JSON
+// answer into out.
+func (c *Client) Get(ctx context.Context, path string, out any) error {
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+
+func (c *Client) do(ctx context.Context, method, path string,
+	body []byte, out any) error {
+	ref, err := url.Parse(path)
+	if err != nil || ref.Scheme != "" || ref.Host != "" {
+		return fmt.Errorf("bad API path %q", path)
+	}
+	u := *c.base
+	u.Path += "/" + strings.TrimLeft(ref.Path, "/")
+	u.RawQuery = ref.RawQuery
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	// Whether the whole request went out: if so, a proxy that is only
+	// slow may still act on it.
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(i httptrace.WroteRequestInfo) {
+			if i.Err == nil {
+				sent.Store(true)
+			}
+		},
+	})
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), rd)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.master)
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return c.connError(err, sent.Load())
+	}
+	defer resp.Body.Close()
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
+	if err != nil {
+		return c.connError(err, true)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return &StatusError{
+			Code:     resp.StatusCode,
+			Message:  c.scrub(Message(answer)),
+			Location: c.scrub(resp.Header.Get("Location")),
+		}
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(answer, out); err != nil {
+		return &AnswerError{Problem: "it is not the JSON expected",
+			Body: c.scrub(clip(answer))}
+	}
+	return nil
+}
+
+// scrub cuts the master key out of text, leaving its last 4
+// characters, as LiteLLM itself does.
+func (c *Client) scrub(s string) string {
+	return strings.ReplaceAll(s, c.master, Mask(c.master))
+}
+
+// Mask shows a key as sk-...last4, the way LiteLLM's own messages do.
+func Mask(key string) string {
+	if len(key) <= 8 {
+		return "sk-..."
+	}
+	return "sk-..." + key[len(key)-4:]
+}
+
+func clip(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if len(s) > 300 {
+		s = s[:300] + "..."
+	}
+	return s
+}
+
+// GenerateRequest is the body of /key/generate, as mint-key sends it.
+type GenerateRequest struct {
+	KeyAlias  string   `json:"key_alias"`
+	Models    []string `json:"models"`
+	MaxBudget float64  `json:"max_budget"` // US dollars
+	Duration  string   `json:"duration"`   // like 30d; m is minutes
+	Metadata  Metadata `json:"metadata"`
+	// BudgetDuration refills the budget, like 1d. Empty: the budget is
+	// a lifetime total.
+	BudgetDuration string `json:"budget_duration,omitempty"`
+}
+
+// Metadata is stored with a key.
+type Metadata struct {
+	Seat string `json:"seat"`
+}
+
+// GenerateKey mints a key and returns it. It refuses an empty model
+// list, which LiteLLM would read as "all models".
+func (c *Client) GenerateKey(ctx context.Context, r GenerateRequest) (
+	string, error) {
+	if len(r.Models) == 0 {
+		return "", errors.New("no models named; LiteLLM would " +
+			"allow them all")
+	}
+	var out struct {
+		Key any `json:"key"`
+	}
+	if err := c.Post(ctx, "/key/generate", r, &out); err != nil {
+		return "", err
+	}
+	key, _ := out.Key.(string)
+	if key == "" {
+		return "", &AnswerError{Problem: "it has no key in it"}
+	}
+	return key, nil
+}
+
+// DeleteKeys revokes keys, given the keys themselves.
+func (c *Client) DeleteKeys(ctx context.Context, keys ...string) error {
+	return c.Post(ctx, "/key/delete",
+		map[string][]string{"keys": keys}, nil)
+}
+
+// DeleteSeats revokes keys by their seat names (key aliases). LiteLLM
+// answers 404, "No keys found", if a name has no key.
+func (c *Client) DeleteSeats(ctx context.Context, seats ...string) error {
+	return c.Post(ctx, "/key/delete",
+		map[string][]string{"key_aliases": seats}, nil)
+}
