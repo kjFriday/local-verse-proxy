@@ -157,6 +157,10 @@ Older? On Ubuntu 22.04, `sudo apt install python3.11`, then type
 `python3.11` where this guide says `python3`. On a Mac,
 `brew install python`.
 
+The game makes and cancels its seats' keys with `mint-key.sh`, so it
+also needs bash, curl and jq
+([main README, Step 1](../README.md#step-1-check-your-tools)).
+
 **Heads up:** while practice mode is on, the proxy serves only the
 two fake practice models, to every seat, and real seats pay the
 practice prices from their own budgets (tiny amounts). Try it on a

@@ -1,0 +1,63 @@
+# On a tag like v1.0.0: builds mint-key for six systems, packs each
+# with README.md and seats.env.example, and makes a GitHub release with
+# them and SHA256SUMS (a checksum for each file).
+#
+#   git tag v1.0.0 && git push origin v1.0.0
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # to make the release
+
+# Each action is pinned to one exact commit (a tag can be moved; a
+# commit cannot). The comment names its version.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          # One exact Go, the one in gui/Dockerfile, so a release can
+          # be built again the same way. Update both together.
+          go-version: "1.24.13"
+      - name: Test
+        run: go vet ./... && go test ./...
+      - name: Build and pack
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          mkdir dist
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              name="mint-key-$TAG-$os-$arch"
+              exe=mint-key
+              if [ "$os" = windows ]; then exe=mint-key.exe; fi
+              mkdir "dist/$name"
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+                -ldflags "-s -w -X main.version=$TAG" \
+                -o "dist/$name/$exe" ./cmd/mint-key
+              cp README.md seats.env.example "dist/$name/"
+              if [ "$os" = windows ]; then
+                (cd dist && zip -qr "$name.zip" "$name")
+              else
+                tar -C dist --owner=0 --group=0 -czf "dist/$name.tar.gz" \
+                  "$name"
+              fi
+              rm -r "dist/$name"
+            done
+          done
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          ls -l dist
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --verify-tag --title "$TAG" \
+            --generate-notes
