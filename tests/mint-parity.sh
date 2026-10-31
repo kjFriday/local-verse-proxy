@@ -27,6 +27,9 @@
 set -uo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
+# A path given as ./mint-key means from where you ran this.
+go_bin="${1:-}"
+[[ -z "$go_bin" || "$go_bin" == /* ]] || go_bin="$PWD/$go_bin"
 cd "$repo" || exit 1
 sh="$repo/mint-key.sh"
 env_main="${SEATS_ENV:-$repo/seats.env}"
@@ -44,7 +47,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-go_bin="${1:-}"
 if [[ -z "$go_bin" ]]; then
   go_bin="$tmp/mint-key"
   go build -o "$go_bin" ./cmd/mint-key || exit 1
