@@ -82,6 +82,11 @@ In `seats.env`: two different random `sk-` keys, one letters-and-digits
 password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and
 `OLLAMA_API_BASE`. Then run the [3-check test](#step-6-the-3-check-test).
 
+**Prefer clicking?** Once the proxy is up, `python3 gui/frontdesk.py`
+opens Front Desk: a web page that makes and cancels key cards and
+shows the tally, on this machine or, with `--lan`, on your phone. See
+[gui/README.md](gui/README.md).
+
 ## One lock, many keys
 
 | In the building | In this repo                            |
@@ -677,6 +682,8 @@ network over plain HTTP.
 - `seats.env.example`: the template for your secrets file.
 - `seats.env`: your real secrets, made in Step 3. Never commit it.
 - `mint-key.sh`: mints and revokes seat keys, using the master key.
+- `gui/`: Front Desk, an optional web page for key cards and the
+  tally. It runs `mint-key.sh` for you. See `gui/README.md`.
 - `compose.yaml`: runs the proxy and Postgres, with the database in
   the `pgdata` volume.
 - `.gitignore` (hidden; `ls -a` shows it): keeps `seats.env` and its

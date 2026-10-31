@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Front Desk</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="bar">
+      <h1>Front Desk</h1>
+      <span id="pill" class="pill wait" role="status">Checking</span>
+    </div>
+    <p id="sub" class="sub">Looking for the proxy</p>
+    <nav id="tabs" class="tabs" aria-label="Screens" hidden>
+      <a href="#cards" data-tab="cards">Key cards</a>
+      <a href="#new" data-tab="new">New card</a>
+      <a href="#tally" data-tab="tally">Tally</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p id="plain-http" class="warn" hidden>
+    <strong>Plain http.</strong> This page, and any new key it shows,
+    crosses your network unencrypted. Use it only on a network you
+    trust.
+  </p>
+  <p id="flash" class="sr-only" role="status"></p>
+  <div id="notes"></div>
+
+  <section id="login" hidden>
+    <h2>Log in</h2>
+    <form id="login-form">
+      <label for="pw">Front Desk password</label>
+      <input id="pw" type="password" autocomplete="current-password"
+             required>
+      <p class="small">It was printed in the terminal where Front
+        Desk started, or set in <code>FRONTDESK_PASSWORD</code>.</p>
+      <button type="submit" class="primary wide">Open the desk</button>
+      <p id="login-msg" class="msg" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="tab-cards" class="tab" hidden>
+    <div id="cards-tiles" class="tiles"></div>
+    <div id="connect" class="connect" hidden>
+      <label for="seat-url">Seats connect to</label>
+      <div class="copy-row">
+        <input id="seat-url" class="mono" readonly>
+        <button id="copy-seat-url" type="button">Copy</button>
+      </div>
+      <p class="small">The base URL for every seat, with its own key
+        card. A guess at this machine's address: if it is wrong,
+        start Front Desk with <code>--seat-url</code>.</p>
+    </div>
+    <div id="cards-list" class="grid"></div>
+    <p class="small">A <b>key card</b> is a seat's own key: it works
+      only through the proxy, for its models, up to its budget, until
+      it expires. A <b>seat</b> is one person, computer or app.</p>
+  </section>
+
+  <section id="tab-new" class="tab" hidden>
+    <h2>Make a key card</h2>
+    <form id="mint-form" class="form" novalidate>
+      <div class="field">
+        <label for="seat">Seat name</label>
+        <input id="seat" required maxlength="40" autocomplete="off"
+               autocapitalize="none" spellcheck="false"
+               placeholder="laptop" aria-describedby="seat-msg">
+        <p id="seat-msg" class="msg" role="alert"></p>
+        <p class="small">One person, computer or app. Letters,
+          digits, dots, dashes and underscores; no spaces.</p>
+      </div>
+      <fieldset class="field">
+        <legend>Models it may use</legend>
+        <div id="models" class="checks"></div>
+        <p id="models-msg" class="msg" role="alert"></p>
+        <p class="small">The doors this card opens. Names come from
+          <code>config.yaml</code>.</p>
+      </fieldset>
+      <div class="field">
+        <label for="budget">Budget, in US dollars</label>
+        <input id="budget" inputmode="decimal" required
+               autocomplete="off" placeholder="5"
+               aria-describedby="budget-msg">
+        <p id="budget-msg" class="msg" role="alert"></p>
+        <p class="small">The most it may spend, ever. It never
+          refills: to top up, cancel the card and make a new one.
+          Models that run on your own Ollama cost nothing.</p>
+      </div>
+      <div class="field">
+        <label for="duration">Lasts</label>
+        <select id="duration" aria-describedby="duration-msg">
+          <option value="1d">1 day</option>
+          <option value="7d">7 days</option>
+          <option value="30d">30 days</option>
+          <option value="90d">90 days</option>
+          <option value="365d">1 year</option>
+        </select>
+        <p id="duration-msg" class="msg" role="alert"></p>
+        <p class="small">After this the card stops working for
+          good.</p>
+      </div>
+      <button id="mint-btn" type="submit" class="primary wide">Make
+        key card</button>
+      <p id="mint-msg" class="msg" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="tab-tally" class="tab" hidden>
+    <div class="seg" role="group" aria-label="Period">
+      <button type="button" data-view="today"
+              aria-pressed="true">Today</button>
+      <button type="button" data-view="all"
+              aria-pressed="false">All time</button>
+    </div>
+    <div id="tally-tiles" class="tiles"></div>
+    <div class="cols">
+      <div>
+        <h2>By seat</h2>
+        <div id="tally-seats" class="bars"></div>
+      </div>
+      <div>
+        <h2>By model</h2>
+        <div id="tally-models" class="bars"></div>
+      </div>
+    </div>
+    <p id="tally-note" class="small"></p>
+    <p class="small">The <b>tally</b> is what each seat used and what
+      it cost. <b>Tokens</b> are the word pieces AI models count and
+      charge by. <b>Refused</b> requests are ones the proxy turned
+      down, such as a model the card may not use, or a card over its
+      budget; they count as requests. The proxy saves the tally in
+      batches, so new use can take a minute to show.</p>
+  </section>
+</main>
+
+<dialog id="newkey" aria-labelledby="nk-title">
+  <h2 id="nk-title">New key card</h2>
+  <p class="warn"><strong>Shown once.</strong> Send the seat these
+    three things privately, not in a shared chat. Close this and the
+    key is gone.</p>
+  <label for="nk-key">1. API key</label>
+  <textarea id="nk-key" readonly rows="2" spellcheck="false"></textarea>
+  <div class="row">
+    <button id="nk-copy" type="button" class="primary">Copy key</button>
+    <button id="nk-save" type="button">Save as file</button>
+  </div>
+  <label for="nk-url">2. Base URL</label>
+  <div class="copy-row">
+    <input id="nk-url" class="mono" readonly>
+    <button id="nk-copy-url" type="button">Copy</button>
+  </div>
+  <p class="label">3. Model</p>
+  <p id="nk-model" class="mono"></p>
+  <p id="nk-models" class="small"></p>
+  <p class="small">The <b>base URL</b> is where an app sends requests.
+    Some apps want <code>/v1</code> on the end; the proxy takes
+    both.</p>
+  <div class="done-bar">
+    <button id="nk-done" type="button" class="primary wide">Done, I
+      saved it</button>
+  </div>
+</dialog>
+
+<footer class="wrap foot">
+  <button id="logout" type="button" class="link" hidden>Log out</button>
+  <span class="small">Front Desk for local-verse-proxy</span>
+</footer>
+</body>
+</html>
