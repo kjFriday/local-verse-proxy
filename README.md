@@ -208,7 +208,7 @@ ls
 ```
 
 **Success:** `ls` lists `compose.yaml`, `config.yaml`, `mint-key.sh`,
-`seats.env.example`, `README.md` and `LICENSE`. Run every later
+`seats.env.example` and `README.md`, among others. Run every later
 command from this folder. A new terminal starts in your home folder,
 so `cd` back here first.
 
@@ -751,7 +751,6 @@ network over plain HTTP.
 - `game/`: an optional office game played with seat keys, where
   finished work scores and burned tokens do not. See
   [game/README.md](game/README.md).
-- `LICENSE`: the MIT license.
 
 ## Glossary
 
@@ -777,4 +776,4 @@ network over plain HTTP.
 
 ## License
 
-MIT. See `LICENSE`.
+To be decided.
