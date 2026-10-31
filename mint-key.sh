@@ -74,6 +74,9 @@ done
 
 [[ "$budget" =~ ^[0-9]+([.][0-9]+)?$ ]] \
   || die "--budget must be a number of US dollars, like 5 or 2.50"
+# LiteLLM units; note "m" is minutes and "mo" is months.
+[[ "$duration" =~ ^[0-9]+(s|m|h|d|w|mo)$ ]] \
+  || die "--duration must be a number and a unit, like 30d, 12h or 2w"
 # What LiteLLM accepts: a whole number and s, m, h, d or w; or 1mo
 # (LiteLLM refuses 2mo and up).
 [[ -z "$bdur" || "$bdur" =~ ^([1-9][0-9]*[smhdw]|1mo)$ ]] \

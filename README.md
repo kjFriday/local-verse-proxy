@@ -1,13 +1,31 @@
 # local-verse-proxy
 
-This repo runs a LiteLLM **proxy** (a middleman for AI requests) on
-your local network, so each person or device gets its own limited key
-while the real provider keys stay on one machine.
+One computer on your network holds the real keys to your AI
+services. Everyone else gets their own limited pass.
 
-Think of an office building. The manager's **master key** opens
-everything, so it never leaves the office. Each worker gets a **key
-card** that opens only some doors and can be switched off without
-changing a single lock. This repo is that system, for AI models.
+## In plain terms
+
+Say you pay for an AI service and want your household or office to
+use it. Usually everyone shares one password, so when a laptop goes
+missing, everybody has to switch to a new one.
+
+This repo puts one computer in the middle, like the front desk of an
+office building:
+
+- **The real password stays at the desk.** It lives on that one
+  machine, and nobody else ever sees it.
+- **Everyone gets their own key card**, with limits. For example:
+  Sam may use the cheap AI, up to 5 dollars, for 30 days.
+- **A laptop goes missing?** Cancel that one card. Everyone else
+  carries on.
+- **The desk keeps a tally** of who used what, and what it cost.
+
+`mint-key.sh` prints the key cards. The steps below set everything
+up one at a time, and say what you should see after each one.
+
+Under the hood, the desk is a LiteLLM **proxy** (a middleman for AI
+requests) running on your local network. The desk's own
+**master key** makes and cancels cards, so it never leaves the desk.
 
 > **Status: early, but tested.** This setup has run end to end
 > against the real LiteLLM v1.106.6 and Postgres, with a stand-in
@@ -22,6 +40,7 @@ they first appear, and in the [glossary](#glossary).
 
 ## Contents
 
+- [In plain terms](#in-plain-terms): what this does
 - [Quick start](#quick-start), for people who know Docker
 - [One lock, many keys](#one-lock-many-keys): how it works
 - Setup, step by step:
@@ -67,7 +86,7 @@ password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and
 
 | In the building | In this repo                            |
 |-----------------|-----------------------------------------|
-| The front door  | The proxy, on port 4000                 |
+| The front desk  | The proxy, on port 4000                 |
 | Master key      | `LITELLM_MASTER_KEY` in `seats.env`     |
 | The locked safe | Real provider keys, also in `seats.env` |
 | A key card      | A virtual key you mint for one seat     |
@@ -282,8 +301,9 @@ prints an **HTTP status code**, a web server's three-digit answer.
 `401` ("not allowed") means the proxy is up and wants a key. `000`
 means nothing answered yet; the first start can take a minute or two.
 
-Still `000` after 3 minutes, or `proxy` shows `Restarting`? Run
-`docker compose logs proxy` and see
+Still `000` after 3 minutes? Or does `proxy` show `Restarting`, or
+`Up` with a few seconds that keep going back to 0? That is a restart
+loop. Run `docker compose logs proxy` and see
 [Troubleshooting: the proxy](#troubleshooting-the-proxy).
 
 ## Step 5: Mint your first key
@@ -300,13 +320,15 @@ cat laptop.key
 
 **Success:** one line starting with `sk-`: the laptop's key, with the
 defaults from Step 3c. The file is saved only if minting worked. If
-not, the reason is on screen and the next lines say
-`No such file or directory`; see
-[Troubleshooting: minting](#troubleshooting-minting).
+not, the reason is on screen above the `cat` output; see
+[Troubleshooting: minting](#troubleshooting-minting). Careful when you
+run this again for the same name: minting fails with
+`already exists`, and `cat` still shows the old key from last time.
 
 `.gitignore` keeps `.key` files out of git. The master key is never
-printed: the script hands it to curl through standard input, so it is
-not on the command line that `ps` shows, nor in your shell history.
+printed in full: the script hands it to curl through standard input,
+so it is not on the command line that `ps` shows, nor in your shell
+history. (A `401` error shows only its last 4 characters and a hash.)
 
 ## Step 6: The 3-check test
 
@@ -328,7 +350,7 @@ checks in this same terminal window; `KEY` exists only there.
 ### Check 1: the key works
 
 ```sh
-curl -s localhost:4000/v1/chat/completions \
+curl -s -m 120 localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"local","messages":[{"role":"user","content":"hi"}]}'
@@ -337,7 +359,9 @@ curl -s localhost:4000/v1/chat/completions \
 The first answer can take up to a minute while Ollama loads the
 model. **Pass:** a block of **JSON** (structured text) with
 `"choices"` in it and a `"content"` holding the reply. **Fail:** JSON
-with `"error"`; its message usually says why. See
+with `"error"`; its message usually says why. Nothing at all after 2
+minutes (`-m 120` makes curl give up quietly) means the proxy cannot
+reach Ollama. See
 [Troubleshooting: the proxy](#troubleshooting-the-proxy).
 
 ### Check 2: the wrong model is refused
@@ -398,8 +422,9 @@ On the proxy machine, run `hostname -I` (Linux) or
 check your router's device list. With WSL, `hostname -I` shows only
 WSL's own `172.` address: open Windows PowerShell, run `ipconfig`,
 and use the IPv4 address of your Wi-Fi or Ethernet adapter. Use the
-address starting `192.168.` or `10.`. Addresses starting `172.` are
-usually Docker's or WSL's own; skip them.
+address your router gave the machine, usually starting `192.168.` or
+`10.`. Skip Docker's own addresses, like `172.17.0.1` and
+`172.18.0.1`, and WSL's. Unsure? Check your router's device list.
 
 ### Seat check: can it reach the proxy?
 
@@ -426,12 +451,16 @@ Parts in `[ ]` are optional; left out, they use the `DEFAULT_` lines
 in `seats.env`, which the script rereads every run.
 
 - `--models local,claude`: the aliases the key may use, split by
-  commas. Name at least one.
+  commas. Name at least one. Names are not checked: a typo such as
+  `lcoal` makes a key that gets `403` for everything. Copy them from
+  the `model_name:` lines in `config.yaml`.
 - `--budget 20`: the most it may spend in total, in US dollars. Type
-  the number only. Never type `$`: the shell quietly turns `$20` into
-  `0`, and a key with a 0 budget is refused every time.
-- `--duration 90d`: time until it expires. `d` is days; `h` (hours)
-  and `w` (weeks) work too.
+  the number only. Never type `$`: the shell quietly mangles it. In
+  bash, `$20` becomes `0` (a key refused every time) and `$25` becomes
+  `5`; in zsh, the Mac default, `$20` vanishes.
+- `--duration 90d`: time until it expires, as a number and a
+  lowercase unit with no space: `d` days, `h` hours, `w` weeks.
+  `m` means minutes, not months: for months, use days like `90d`.
 - `--budget-duration 1d`: refill the budget on a schedule, so
   `--budget` becomes an allowance per day (or per `12h`, `1w`, `1mo`;
   `s` and `m` work too, but months only as `1mo`). Left out, the
@@ -473,7 +502,9 @@ leaked. Use one of these:
 even if the key itself is lost. That key now gets `401`, every other
 key keeps working, and the seat name is free again; delete its file
 with `rm laptop.key`. An error mentioning `404` or `No keys found`
-means there was no such key: already revoked, or mistyped.
+means there was no such key: already revoked, or mistyped. If `cat`
+says `No such file or directory` before the usage text, the key file
+is gone and nothing was revoked: use the seat name.
 
 ## Adding a model
 
@@ -500,8 +531,11 @@ the bad line.
 ```sh
 docker compose up -d --force-recreate proxy
 until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done
-./mint-key.sh den --models local,local-small
+key=$(./mint-key.sh den --models local,local-small) && echo "$key" > den.key
 ```
+
+Removing a model works the same way. Keys made with it still list it
+in `/v1/models`, but calls to it get `400` `Invalid model name`.
 
 ## Day-to-day commands
 
@@ -513,11 +547,15 @@ docker compose down           # stop (keys are kept)
 docker compose up -d --force-recreate proxy   # apply edits
 ```
 
+- After starting, the proxy needs about 30 seconds before it
+  answers; minting before that fails with `curl: (7)` or `(56)`.
 - Use the last line after editing `seats.env` or `config.yaml`; a
-  plain restart does not reread `seats.env`.
+  plain `restart` does not reread `seats.env`. After a `seats.env`
+  edit it recreates `db` too, which is harmless: keys stay.
 - Keys and spending live in a Docker **volume** (storage that
-  survives restarts) called `pgdata`. Never add `-v` to
-  `docker compose down`: that deletes the volume and every key.
+  survives restarts) called `local-verse-proxy_pgdata`. Never add
+  `-v` to `docker compose down`: that deletes the volume and every
+  key.
 - After a reboot both containers return on their own, but only if
   Docker starts at boot: on Linux, `sudo systemctl enable docker`
   once; in Docker Desktop, turn on its start-at-sign-in setting.
@@ -537,6 +575,9 @@ docker compose up -d --force-recreate proxy   # apply edits
    ports that Docker opens may bypass firewall rules such as ufw's.
 6. **The admin page shares the port.** LiteLLM serves one at
    `http://<proxy-ip>:4000/ui`, and the master key logs in to it.
+   Log in only on the proxy machine (`http://localhost:4000/ui`):
+   from another machine, the master key crosses your network
+   unencrypted.
 7. **Lock down Ollama.** It has no keys. Anyone who reaches its port
    11434 can use it directly, skipping your keys and budgets.
    Firewall it so only the proxy machine can reach it. (Ollama on the
@@ -550,7 +591,8 @@ docker compose up -d --force-recreate proxy   # apply edits
 
 ## Troubleshooting: setting up
 
-- **`Cannot connect to the Docker daemon`**: Docker is not running.
+- **`Cannot connect to the Docker daemon`** or **`failed to connect
+  to the docker API`**: Docker is not running.
   On Linux, run `sudo systemctl enable --now docker`; or start Docker
   Desktop.
 - **`permission denied` mentioning `docker.sock`**: your user may not
@@ -574,12 +616,16 @@ docker compose up -d --force-recreate proxy   # apply edits
 
 ## Troubleshooting: minting
 
-- **`LITELLM_MASTER_KEY: not set in ...`**, or
-  **`replace the change-me values in ... first`**: a key in
-  `seats.env` is empty or a placeholder. If you never ran
-  `docker compose up`, do Step 3a and carry on. If you did, Postgres
-  already saved the template password, so start over (no keys exist
-  yet): `docker compose down -v`, Step 3a, then `docker compose up -d`.
+- **`LITELLM_MASTER_KEY: not set in ...`**: the master key line in
+  `seats.env` is empty. Rerun the Step 3a block (it fills only empty
+  or placeholder lines), then
+  `docker compose up -d --force-recreate proxy`. Keys you already
+  made keep working.
+- **`replace the change-me values in ... first`**: a placeholder is
+  left in `seats.env`. If you never ran `docker compose up`, do Step
+  3a and carry on. If you did, Postgres already saved the template
+  password, so start over (no keys exist yet):
+  `docker compose down -v`, Step 3a, then `docker compose up -d`.
 - **Usage text** (`Mint a scoped key for one seat...`): the seat name
   is missing or starts with `-`, an option is misspelled or has no
   value, or a space slipped into `--models local, claude`.
@@ -590,27 +636,34 @@ docker compose up -d --force-recreate proxy   # apply edits
 - **`curl: (22)` with `400`, then `... already exists`**: that seat
   name is taken. Run `./mint-key.sh --revoke-seat <seat>`, or pick a
   new name.
-- **`curl: (22)` with `401`**: the proxy did not accept the master
-  key, usually because `seats.env` changed after it started. Run
-  `docker compose up -d --force-recreate proxy`.
+- **`curl: (22)` with `401`**, then `Invalid proxy server token`:
+  the proxy did not accept the master key, usually because
+  `seats.env` changed after it started. Run
+  `docker compose up -d --force-recreate proxy`. The message shows
+  only the key's last 4 characters and a hash, not the key.
 
 ## Troubleshooting: the proxy
 
-Start with `docker compose ps`, then `docker compose logs proxy`.
+Start with `docker compose ps`, then `docker compose logs proxy`. A
+**restart loop** shows as `Restarting`, or as `Up` with a few seconds
+that keep going back to 0.
 
-- **`proxy` keeps `Restarting`, and its log says it `refused to start`
-  over the master key**: `LITELLM_MASTER_KEY` in `seats.env` is empty.
-  Ignore the log's advice about a `.env` file, and never set the
-  `DANGEROUSLY_PERMIT` option it offers. Fix it as in
-  [Troubleshooting: minting](#troubleshooting-minting).
-- **`proxy` keeps restarting, and `docker compose logs db` says
+- **`proxy` is in a restart loop, and its log says it
+  `refused to start` over the master key**: `LITELLM_MASTER_KEY` in
+  `seats.env` is empty, or a well-known example such as `sk-1234`
+  (`publicly known default`). Empty that line, rerun the Step 3a
+  block, then `docker compose up -d --force-recreate proxy`. Ignore
+  the log's advice about a `.env` file, and never set the
+  `DANGEROUSLY_PERMIT` option it offers.
+- **`proxy` is in a restart loop, and `docker compose logs db` says
   `password authentication failed`**: Postgres kept the password
   from its first start; put it back in `POSTGRES_PASSWORD` and
   `DATABASE_URL`. If no keys are worth keeping yet (say you started
   once before filling in `seats.env`), `docker compose down -v` and
   then `docker compose up -d` start the database fresh, erasing all
   keys.
-- **Check 1 fails with an error about reaching Ollama**: check that
+- **Check 1 fails with `Cannot connect to host`, or prints nothing
+  until curl gives up**: check that
   `OLLAMA_API_BASE` is not `localhost`, the Step 1 Ollama check
   passes, `OLLAMA_HOST=0.0.0.0` is set on the Ollama machine
   ([how](#letting-the-proxy-reach-ollama)), and the model is
@@ -630,13 +683,22 @@ Start with `docker compose ps`, then `docker compose logs proxy`.
   network, and that no firewall on the proxy machine blocks port
   4000. If the Step 4 knock works on the proxy machine but the seat
   check fails, it is a network problem, not a key problem.
-- **`No such file or directory` naming `proxy-ip` or similar**: a
-  placeholder was typed as is. Put in the real value, without `< >`.
-- **A brand-new key gets a budget error**: it was minted with a 0
-  budget, often by typing `$20`. Revoke it and mint again.
-- **A key that worked is refused**: `401` means it expired or was
-  revoked; `422` means its budget is spent. Revoke it by seat name to
-  free the name, then mint the seat a new key.
+- **`No such file` naming `proxy-ip` or similar**: a placeholder was
+  typed as is. Put in the real value, without `< >`. A `401` saying
+  `expected to start with 'sk-'` means the same for `<seat-key>`:
+  paste the whole key from `cat <seat>.key`.
+- **`404` with `{"detail":"Not Found"}`**: the app added `/v1` to a
+  base URL that already had it. Give that app
+  `http://<proxy-ip>:4000`, without `/v1`.
+- **A brand-new key gets `422` `Budget has been exceeded!` with
+  `Max budget: 0.0`**: it was minted with a 0 budget, often by
+  typing `$20`. Revoke it and mint again.
+- **A key that worked is refused**: read the message. `401` with
+  `Expired Key` or `Invalid proxy server token` means it expired or
+  was revoked; `422` with `Budget has been exceeded` means its budget
+  is spent. Revoke it by seat name to free the name, then mint the
+  seat a new key. A `401` that names Anthropic is not the seat's key:
+  the proxy's `ANTHROPIC_API_KEY` is missing or wrong.
 - **`403`, "not available for this API key"**: the key was not made
   with that model. Check the spelling, or mint one with `--models`.
 
