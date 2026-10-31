@@ -1,14 +1,15 @@
 # LiteLLM proxy config for the office game, practice mode. Swapped in
 # for config.yaml by game/compose.game.yaml. Both models are served by
-# the fake-ollama stub, with shadow prices, so mana is real even with
-# no AI anywhere. 1 mana = $0.00001 (see game/rules.toml).
+# the fake-ollama stub (compose.game.yaml points OLLAMA_API_BASE at
+# it), with shadow prices, so mana is real even with no AI anywhere.
+# 1 mana = $0.00001 (see game/rules.toml).
 
 model_list:
   # Cheap and good enough: 0.01 mana per prompt token.
   - model_name: local
     litellm_params:
       model: ollama_chat/office-local
-      api_base: http://fake-ollama:11434
+      api_base: os.environ/OLLAMA_API_BASE
       input_cost_per_token: 0.0000001
       output_cost_per_token: 0.0000002
 
@@ -16,7 +17,7 @@ model_list:
   - model_name: pro
     litellm_params:
       model: ollama_chat/office-pro
-      api_base: http://fake-ollama:11434
+      api_base: os.environ/OLLAMA_API_BASE
       input_cost_per_token: 0.000001
       output_cost_per_token: 0.000002
 

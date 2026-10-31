@@ -10,6 +10,10 @@ services:
       # Same target as in compose.yaml, so this mount replaces it.
       - ./game/config.game.yaml:/app/config.yaml:ro
     environment:
+      # The practice models live in fake-ollama. LiteLLM also reads
+      # this at startup to look the models up, so it must point there
+      # (a real Ollama in seats.env would be asked about fake models).
+      OLLAMA_API_BASE: http://fake-ollama:11434
       # Budget reset sweep every 5 s, not every ~10 min, so a short
       # practice day gets its mana back on time.
       PROXY_BUDGET_RESCHEDULER_MIN_TIME: "5"

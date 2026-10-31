@@ -419,6 +419,7 @@ curl http://<proxy-ip>:4000/v1/models -H "Authorization: Bearer <seat-key>"
 
 ```sh
 ./mint-key.sh <seat> [--models a,b] [--budget USD] [--duration 30d]
+                     [--budget-duration 1d]
 ```
 
 Parts in `[ ]` are optional; left out, they use the `DEFAULT_` lines
@@ -431,6 +432,11 @@ in `seats.env`, which the script rereads every run.
   `0`, and a key with a 0 budget is refused every time.
 - `--duration 90d`: time until it expires. `d` is days; `h` (hours)
   and `w` (weeks) work too.
+- `--budget-duration 1d`: refill the budget on a schedule, so
+  `--budget` becomes an allowance per day (or per `12h`, `1w`, `1mo`;
+  `s` and `m` work too). Left out, the budget is a lifetime total.
+  LiteLLM lines refills up with the clock, in UTC: `1d` refills at
+  midnight, `1h` on the hour, `1w` on Mondays, `1mo` on the 1st.
 
 For example, a desk computer that may use both models, saved the same
 way as in Step 5:
@@ -442,8 +448,9 @@ key=$(./mint-key.sh desk --models local,claude --budget 20 \
 
 ### Budgets, expiry and seat names
 
-- **A budget is a lifetime total.** It never refills. To top up,
-  revoke the key and mint a new one. A key past its budget gets `422`.
+- **A budget is a lifetime total,** unless the key was minted with
+  `--budget-duration`. To top up, revoke the key and mint a new one.
+  A key past its budget gets `422` until the next refill, if any.
 - **`local` costs nothing.** LiteLLM prices the Ollama model at $0, so
   budgets only limit paid models such as `claude`.
 - **Expiry is final.** An expired key gets `401` but may still hold
@@ -663,12 +670,15 @@ network over plain HTTP.
 - `.gitignore` (hidden; `ls -a` shows it): keeps `seats.env` and its
   copies, `.env` and `*.key` files out of git.
 - `*.key`: seat keys you saved. Never commit them.
+- `game/`: an optional office game played with seat keys, where
+  finished work scores and burned tokens do not. See `game/README.md`.
 - `LICENSE`: the MIT license.
 
 ## Glossary
 
 - **API key:** a secret string that lets a program use a service.
-- **Budget:** the most a key may spend, in US dollars, over its life.
+- **Budget:** the most a key may spend, in US dollars, over its life
+  (or per refill, with `--budget-duration`).
 - **Docker:** runs programs in sealed boxes called containers.
 - **Env file:** a text file of `NAME=value` lines, here `seats.env`.
 - **Master key:** `LITELLM_MASTER_KEY`, the admin key that makes and
