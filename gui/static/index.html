@@ -63,7 +63,8 @@
     <div id="cards-list" class="grid"></div>
     <p class="small">A <b>key card</b> is a seat's own key: it works
       only through the proxy, for its models, up to its budget, until
-      it expires. A <b>seat</b> is one person, computer or app.</p>
+      it expires. Some budgets <b>refill</b> on a schedule. A
+      <b>seat</b> is one person, computer or app.</p>
   </section>
 
   <section id="tab-new" class="tab" hidden>
@@ -91,9 +92,23 @@
                autocomplete="off" placeholder="5"
                aria-describedby="budget-msg">
         <p id="budget-msg" class="msg" role="alert"></p>
-        <p class="small">The most it may spend, ever. It never
-          refills: to top up, cancel the card and make a new one.
-          Models that run on your own Ollama cost nothing.</p>
+        <p class="small">The most it may spend: in all, or between
+          refills if you pick one below. Models that run on your own
+          Ollama cost nothing.</p>
+      </div>
+      <div class="field">
+        <label for="refill">Refill</label>
+        <select id="refill" aria-describedby="refill-msg">
+          <option value="" selected>Never: a lifetime total</option>
+          <option value="1d">Every day</option>
+          <option value="1w">Every week</option>
+          <option value="1mo">Every month</option>
+        </select>
+        <p id="refill-msg" class="msg" role="alert"></p>
+        <p class="small">With a refill the budget comes back in full
+          soon after midnight UTC (world time), on Mondays, or on the
+          1st. Each card shows when, in your own time. With Never, to
+          top up, cancel the card and make a new one.</p>
       </div>
       <div class="field">
         <label for="duration">Lasts</label>

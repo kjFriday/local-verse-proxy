@@ -10,18 +10,21 @@ Minting and revoking go through ./mint-key.sh. Stdlib only.
 """
 
 import argparse
+import functools
 import gzip
 import hashlib
 import hmac
 import http.client
 import ipaddress
 import json
+import math
 import os
 import queue
 import re
 import secrets
 import select
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -38,6 +41,7 @@ from urllib.parse import quote, urlsplit
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 STATIC = HERE / "static"
+GAME = REPO / "game"
 
 FAST = 2.0          # seconds between checks while someone watches
 KEYS_EVERY = 10.0   # card spend lands in batches; our edits show at once
@@ -49,14 +53,18 @@ IDLE_AFTER = 30.0   # stop checking this long after the last viewer
 PING_EVERY = 15.0   # keep live streams open
 MAX_STREAMS = 100
 MAX_CONNECTIONS = 256   # each open connection holds a thread
+MAX_PER_DEVICE = 32     # with --lan: one device can't take them all
 READ_TIMEOUT = 10   # seconds a browser gets to send its request
 SESSION_HOURS = 12
 LOCK_AFTER = 5      # wrong passwords from one device in 10 minutes
-LOCK_ALL_AFTER = 20     # from all devices together
+FAIL_GAP = 1.0      # seconds between tries of devices that got it wrong
 
 SEAT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
 BUDGET_RE = re.compile(r"[0-9]{1,6}([.][0-9]{1,2})?")
-DURATION_RE = re.compile(r"[1-9][0-9]{0,3}[hdw]")
+# What mint-key.sh takes; "m" is minutes and "mo" months.
+DURATION_RE = re.compile(r"[1-9][0-9]{0,3}(mo|[smhdw])")
+# How often a budget refills: "" is never, a lifetime total.
+REFILLS = ("", "1d", "1w", "1mo")
 KEY_RE = re.compile(r"sk-[A-Za-z0-9_-]{8,200}")
 HOST_RE = re.compile(r"[A-Za-z0-9.-]{1,253}|[0-9A-Fa-f:]{2,39}")
 # Key-like text in an error message: keys, key ends, hashes.
@@ -121,6 +129,22 @@ def parse_time(text):
         return None
     t = datetime.fromisoformat(text)
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def utc_text(text):
+    """A time from the proxy, with its time zone spelled out, so a
+    browser never reads it as local time. None if it isn't one."""
+    return _utc_text(text) if isinstance(text, str) else None
+
+
+# Remembered: every check asks again for each card's next refill.
+@functools.lru_cache(maxsize=4096)
+def _utc_text(text):
+    try:
+        t = parse_time(text)
+    except ValueError:
+        return None
+    return t.isoformat() if t else None
 
 
 def lan_ip():
@@ -360,8 +384,81 @@ def seat_state(k, now):
         return "expired"
     budget = k.get("max_budget")
     if budget is not None and (k.get("spend") or 0) >= budget:
-        return "spent"
+        # A budget that refills on a schedule is only waiting.
+        return "waiting" if k.get("budget_duration") else "spent"
     return "ok"
+
+
+def dollars(x):
+    """Spend for the page. A refill can leave -1e-18: that is $0."""
+    return max(0.0, round(x or 0, 6))
+
+
+class GameSeats:
+    """The office game's seats, found the way `office.py reset` finds
+    them: its prefix plus each roster name in rules.toml, and every
+    player in office.db. Each file is reread only when it changes: a
+    running game writes office.db many times a minute."""
+
+    def __init__(self, folder):
+        self.rules = folder / "rules.toml"
+        self.db = folder / "office.db"
+        self.rules_at = self.db_at = -1  # -1: not read yet
+        self.prefix = ""
+        self.roster = set()
+        self.players = set()
+        self.seats = frozenset()
+
+    def get(self):
+        at = self.mtime(self.rules)
+        if at != self.rules_at:
+            self.rules_at = at
+            self.load_rules()
+        at = self.mtime(self.db)
+        if at != self.db_at:
+            self.db_at = at
+            self.load_players(at is not None)
+        self.seats = frozenset(self.roster | self.players)
+        return self.seats
+
+    @staticmethod
+    def mtime(path):
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    def load_rules(self):
+        import tomllib  # new in 3.11: main() says so on older ones
+        try:
+            with open(self.rules, "rb") as f:
+                rules = tomllib.load(f)
+            self.prefix = str(rules["office"]["seat_prefix"])
+            self.roster = {self.prefix + str(s["name"])
+                           for s in rules["roster"]["seats"]}
+        except (OSError, ValueError, KeyError, TypeError):
+            self.prefix, self.roster = "", set()
+
+    def load_players(self, there):
+        if not there:
+            self.players = set()
+            return
+        try:
+            db = sqlite3.connect(self.db.as_uri() + "?mode=ro",
+                                 uri=True, timeout=0.2)
+            try:
+                self.players = {r[0] for r in db.execute(
+                    "SELECT seat FROM players")}
+            finally:
+                db.close()
+        except sqlite3.Error:
+            self.db_at = -1  # busy or half made: next time
+
+    def owns(self, seat):
+        """True if a new card by this name would clash with the game."""
+        low = seat.lower()
+        return bool(self.prefix) and low.startswith(self.prefix) or \
+            low in {s.lower() for s in self.seats}
 
 
 class Desk:
@@ -403,6 +500,8 @@ class Desk:
         self.hist = None       # tally of the days before today
         self.hist_at = 0.0
         self.fallback_at = -FALLBACK_EVERY
+        self.games = GameSeats(GAME)
+        self.game = frozenset()  # seat names the office game uses
 
     def run(self):
         last = 0.0
@@ -473,6 +572,7 @@ class Desk:
                     self.force_keys = False
                     self.set_keys(self.load_keys())
                     self.keys_at = now
+                    self.load_game()
             except (OSError, ValueError, ProxyError,
                     http.client.HTTPException) as e:
                 notes.append(str(e) if isinstance(e, ProxyError) else
@@ -515,6 +615,14 @@ class Desk:
                 else:
                     del self.overrides[seat]
             self.raw_keys = keys
+
+    def load_game(self):
+        """Which cards the office game made. Read with the cards, since
+        only they use it."""
+        try:
+            self.game = self.games.get()
+        except Exception as e:  # the game is optional: never fail here
+            log("could not read the game's seats: " + repr(e)[:160])
 
     def show_change(self, seat, gone):
         """Put a new or cancelled card in the shared answer now, with
@@ -563,7 +671,7 @@ class Desk:
 
     def http_tally(self, why):
         """Fallback without psql: today from the proxy's own API, and
-        all-time spend of live cards only."""
+        for all time only what it still knows, at least today."""
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         rows = {}
 
@@ -596,6 +704,12 @@ class Desk:
             pass
         for k in self.raw_keys:
             add("seat", k.get("key_alias") or "", k.get("spend") or 0)
+        # A card that refills keeps only its spend since the last
+        # refill, a cancelled one none, and the proxy keeps no request
+        # or token totals at all: all time is at least today.
+        for r in rows.values():
+            for f in ("spend", "tokens", "reqs", "fails"):
+                r[f] = max(r[f] or 0, r["t_" + f])
         return {"day": day, "rows": list(rows.values()),
                 "source": "proxy", "why": why}
 
@@ -614,11 +728,15 @@ class Desk:
                 "ends": hint,
                 "models": k.get("models") or [],
                 "budget": k.get("max_budget"),
-                "spent": round(k.get("spend") or 0, 6),
+                "spent": dollars(k.get("spend")),
+                # Set if the budget refills: how often, and when next.
+                "refills": k.get("budget_duration") or None,
+                "resets": utc_text(k.get("budget_reset_at")),
                 "expires": k.get("expires"),
                 "created": k.get("created_at"),
                 "used": k.get("last_active"),
                 "state": seat_state(k, now),
+                "game": (k.get("key_alias") or "") in self.game,
             })
         cards.sort(key=lambda c: (c["seat"] == "", c["seat"].lower()))
         self.tokens = tokens
@@ -629,7 +747,7 @@ class Desk:
             for r in rows:
                 for f in ("spend", "t_spend"):
                     if r.get(f) is not None:
-                        r[f] = round(r[f], 6)
+                        r[f] = dollars(r[f])
             tally = {
                 "day": self.tally.get("day"),
                 "source": self.tally.get("source"),
@@ -662,15 +780,41 @@ class Desk:
             self.checked = time.time()
 
 
+class Refused(Exception):
+    """A login that was not even checked. wait: seconds to retry."""
+
+    def __init__(self, msg, wait):
+        super().__init__(msg)
+        self.wait = wait
+
+
+class WrongPassword(ValueError):
+    """A password that was checked and was wrong: it counts."""
+
+
+class Locked(WrongPassword):
+    """The wrong password that locks its device for 10 minutes."""
+
+
+def digest(password):
+    # "surrogatepass": JSON may carry a lone "\ud800", which plain
+    # UTF-8 refuses. Such a password is simply wrong.
+    return hashlib.sha256(password.encode("utf-8",
+                                          "surrogatepass")).digest()
+
+
 class Gate:
     """Who may use the desk. Without a password, everyone who can
     reach 127.0.0.1 (this computer) may."""
 
     def __init__(self, password):
         self.password = password
+        self.want = digest(password) if password is not None else None
         self.sessions = {}  # cookie -> (expires, csrf, address)
+        # Failure times come from the monotonic clock: a system clock
+        # set back must not lock anyone out.
         self.fails = {}     # address -> recent failure times
-        self.all_fails = deque()
+        self.last_fail = float("-inf")  # the last one, any device
         self.open_csrf = secrets.token_urlsafe(24)
         self.lock = threading.Lock()
 
@@ -690,33 +834,40 @@ class Gate:
         return None
 
     def login(self, addr, password):
-        """(cookie, csrf), or raises ValueError with a plain reason."""
-        now = time.time()
+        """(cookie, csrf), or raises WrongPassword with a plain reason,
+        or Refused before the password is even checked."""
+        now, tick = time.time(), time.monotonic()
         with self.lock:
             for a in [a for a, q in self.fails.items()
-                      if not q or q[-1] < now - 600]:
+                      if not q or q[-1] < tick - 600]:
                 del self.fails[a]
             mine = self.fails.setdefault(addr, deque())
-            for q in (mine, self.all_fails):
-                while q and q[0] < now - 600:
-                    q.popleft()
-            if len(mine) >= LOCK_AFTER or \
-                    len(self.all_fails) >= LOCK_ALL_AFTER:
-                raise PermissionError(
-                    "Too many wrong passwords. Wait 10 minutes.")
-            given = hashlib.sha256(password.encode()).digest()
-            want = hashlib.sha256(self.password.encode()).digest()
-            if not hmac.compare_digest(given, want):
-                mine.append(now)
-                self.all_fails.append(now)
-                left = min(LOCK_AFTER - len(mine),
-                           LOCK_ALL_AFTER - len(self.all_fails))
+            if len(mine) >= LOCK_AFTER:
+                # Locked for 10 minutes from the try that locked it: the
+                # cleanup above keeps the record until then.
+                wait = max(1, math.ceil(mine[-1] + 600 - tick))
+                mins = math.ceil(wait / 60)
+                mins = "1 minute" if mins == 1 else f"{mins} minutes"
+                raise Refused(f"Too many wrong passwords. Wait {mins}.",
+                              wait)
+            while mine and mine[0] < tick - 600:
+                mine.popleft()
+            # Devices that got it wrong lately get one try a second
+            # between them all: far too slow to guess. A device with no
+            # wrong tries is always let through, so nobody is kept out.
+            if mine and tick - self.last_fail < FAIL_GAP:
+                raise Refused("Too many tries just now. Wait a second "
+                              "and try again.", 1)
+            if not hmac.compare_digest(digest(password), self.want):
+                mine.append(tick)
+                self.last_fail = tick
+                left = LOCK_AFTER - len(mine)
                 if left <= 0:
-                    raise ValueError("Wrong password. That was the last "
-                                     "try: wait 10 minutes.")
+                    raise Locked("Wrong password. That was the last "
+                                 "try: wait 10 minutes.")
                 tries = "1 try" if left == 1 else f"{left} tries"
-                raise ValueError(f"Wrong password. {tries} left before "
-                                 "a 10-minute lock.")
+                raise WrongPassword(f"Wrong password. {tries} left "
+                                    "before a 10-minute lock.")
             self.fails.pop(addr, None)
             for c in [c for c, s in self.sessions.items() if s[0] < now]:
                 del self.sessions[c]
@@ -830,28 +981,61 @@ class Server(ThreadingHTTPServer):
     # socketserver's default backlog is 5: a burst of page loads then
     # waits 1-3 s for SYN retries (measured: 50 at once, 4.5 s worst).
     request_queue_size = 128
+    per_device = None   # most open connections from one address
 
     def __init__(self, *args):
         super().__init__(*args)
         self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.open = {}  # address -> its open connections
+        self.open_lock = threading.Lock()
+
+    def take(self, addr):
+        """Room for one more connection from addr? Then it is held."""
+        if not self.slots.acquire(blocking=False):
+            return False
+        if self.per_device:
+            with self.open_lock:
+                n = self.open.get(addr, 0)
+                if n >= self.per_device:
+                    self.slots.release()
+                    return False
+                self.open[addr] = n + 1
+        return True
+
+    def give_back(self, addr):
+        if self.per_device:
+            with self.open_lock:
+                n = self.open.pop(addr, 1) - 1
+                if n > 0:
+                    self.open[addr] = n
+        self.slots.release()
 
     def process_request(self, request, client_address):
-        # One thread per connection, so cap them: past the cap, a new
-        # connection is closed at once.
-        if not self.slots.acquire(blocking=False):
+        # One thread per connection, so cap them, in all and per
+        # device: past a cap, a new connection is closed at once.
+        if not self.take(client_address[0]):
             self.shutdown_request(request)
             return
         try:
             super().process_request(request, client_address)
         except Exception:
-            self.slots.release()
+            self.give_back(client_address[0])
             raise
 
     def process_request_thread(self, request, client_address):
         try:
             super().process_request_thread(request, client_address)
         finally:
-            self.slots.release()
+            self.give_back(client_address[0])
+
+    def handle_error(self, request, client_address):
+        # A device that hung up before its answer went out is no news.
+        # socketserver would print a traceback for each one, so any
+        # device could fill the terminal.
+        e = sys.exc_info()[1]
+        if isinstance(e, OSError):
+            return
+        log("error: " + self.app.settings.scrub(repr(e))[:200])
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1066,7 +1250,11 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         if n < 0 or n > 8192:
             raise ValueError("Too much data.")
-        data = json.loads(self.rfile.read(n) or b"{}")
+        raw = self.rfile.read(n) or b"{}"
+        try:
+            data = json.loads(raw)
+        except RecursionError:  # nested too deep, on Python 3.11
+            raise ValueError("Send valid JSON.") from None
         if not isinstance(data, dict):
             raise ValueError("Send a JSON object.")
         return data
@@ -1114,12 +1302,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.fail(400, "Type the password.")
         try:
             cookie, csrf = gate.login(self.addr(), pw)
-        except PermissionError as e:
-            log(f"login refused for {self.addr()}: too many")
+        except Refused as e:
+            # Not logged: a locked device could flood the terminal. The
+            # lock was logged once, as it began.
             return self.fail(429, str(e), headers=(("Retry-After",
-                                                     "600"),))
-        except ValueError as e:
-            log(f"wrong password from {self.addr()}")
+                                                     str(e.wait)),))
+        except WrongPassword as e:
+            locked = isinstance(e, Locked)
+            log(f"wrong password from {self.addr()}" +
+                (": locked for 10 minutes" if locked else ""))
             return self.fail(401, str(e))
         log(f"logged in: {self.addr()}")
         line = (f"{app.cookie_name}={cookie}; Max-Age="
@@ -1155,6 +1346,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.fail(400, "Seat names use letters, digits, "
                              "dots, dashes and underscores, up to 40, "
                              "with no spaces.", field="seat")
+        # The game mints its own seats; one made here would clash.
+        if d.games.owns(seat):
+            pre = d.games.prefix
+            what = f"Names that start with {pre} are" if pre and \
+                seat.lower().startswith(pre) else "That name is"
+            return self.fail(400, f"{what} kept for the office game. "
+                             "Pick another name.", field="seat")
         if not (state.get("desk") or {}).get("up"):
             return self.fail(503, "The proxy is not answering, so no "
                              "card can be made right now.")
@@ -1169,6 +1367,11 @@ class Handler(BaseHTTPRequestHandler):
         if not BUDGET_RE.fullmatch(budget) or float(budget) <= 0:
             return self.fail(400, "Budget is a number of US dollars "
                              "above 0, like 5 or 2.50.", field="budget")
+        refill = data.get("refill", "")
+        if not isinstance(refill, str) or refill not in REFILLS:
+            return self.fail(400, "Pick how often the budget refills: "
+                             "never, every day, every week or every "
+                             "month.", field="refill")
         duration = str(data.get("duration", "")).strip()
         if not DURATION_RE.fullmatch(duration):
             return self.fail(400, "Pick how long the card lasts.",
@@ -1180,10 +1383,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.fail(409, f"{taken} already has a key card. "
                              "Cancel it first, or pick a new name.",
                              field="seat")
+        args = [seat, "--models", ",".join(models), "--budget", budget,
+                "--duration", duration]
+        if refill:
+            args += ["--budget-duration", refill]
         with app.work:
-            r = app.run_mint([seat, "--models", ",".join(models),
-                              "--budget", budget, "--duration",
-                              duration])
+            r = app.run_mint(args)
         key = r.stdout.strip()
         if r.returncode != 0 or not KEY_RE.fullmatch(key):
             log(f"mint failed for seat {seat}")
@@ -1194,7 +1399,7 @@ class Handler(BaseHTTPRequestHandler):
         d.show_change(seat, gone=False)
         self.send(200, {"seat": seat, "key": key, "models": models,
                         "budget": budget, "duration": duration,
-                        "base_url": self.seat_url()})
+                        "refill": refill, "base_url": self.seat_url()})
 
     def revoke(self, data):
         app, d = self.app, self.app.desk
@@ -1275,6 +1480,8 @@ def main():
         sys.exit(f"cannot use port {args.port}: {e.strerror}. "
                  f"Try --port {args.port + 1}.")
     server.app = app
+    if args.lan:
+        server.per_device = MAX_PER_DEVICE
     threading.Thread(target=desk.run, daemon=True).start()
     desk.kick.set()  # one check now: psql's ~150 ms start is paid here
 

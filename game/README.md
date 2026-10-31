@@ -178,7 +178,8 @@ python3 game/office.py board
 The first line tells Docker Compose to add the game's overlay file,
 `compose.game.yaml`, on top of `compose.yaml`. Your proxy now uses
 `game/config.game.yaml` and a fake model server, `fake-ollama`. If
-the `until` line never ends, see "Is it up?" in the main README.
+the `until` line never ends, see
+[Is it up?](../README.md#is-it-up) in the main README.
 
 **Success:** `docker compose ps` shows three rows, `db`, `proxy` and
 `fake-ollama`, all `Up`. `fake-ollama` has no port: only the proxy
@@ -186,7 +187,9 @@ talks to it.
 
 `setup` mints ten game seats, one per bot, and saves their keys in
 `game/keys/`. **Success:** ten `game-...` lines, then
-`Office ... is open.`
+`Office ... is open.` If you use [Front Desk](../gui/README.md), the
+seats show there as office game seats. Don't cancel them there
+mid-week: `reset` removes them all when the week ends.
 
 `run` plays two 2-minute days, printing a summary and both boards
 after each day. It takes about 5 minutes: the first day may wait up
@@ -371,11 +374,11 @@ a boost for `pro`), and the prices (shadow prices in
 `config.game.yaml`; real models cost what they cost).
 
 **Not built yet: real mode.** For people, a day would be `"1d"`
-(LiteLLM refills at midnight UTC) and players would tag their own
-requests, for example with an `x-litellm-tags: quest:<id>` header
-(LiteLLM reads tags from that header too). What is missing is a way
-for people to take and hand in quests, and an honest way to judge
-real work.
+(LiteLLM refills at midnight UTC, world time) and players would tag
+their own requests, for example with an `x-litellm-tags: quest:<id>`
+header (LiteLLM reads tags from that header too). What is missing
+is a way for people to take and hand in quests, and an honest way to
+judge real work.
 
 ## How the mana refills
 
@@ -422,11 +425,14 @@ hold every call the bots got an answer to (up to `flush_wait`).
   repo folder, with the proxy running (`docker compose ps`).
   `office.py` runs `docker` itself, so it cannot use `sudo`. If you
   need `sudo` for docker, add yourself to the `docker` group (main
-  README, "Troubleshooting: setting up").
+  README,
+  [Troubleshooting: setting up](../README.md#troubleshooting-setting-up)).
 - **`reset` says `could not revoke`**: nothing was wiped. If the
   error is `curl: (7)`, the proxy is down: `docker compose up -d`,
   then `reset` again. If it is `401`, seats.env changed after the
-  proxy started: see "Troubleshooting: minting" in the main README.
+  proxy started: see
+  [Troubleshooting: minting](../README.md#troubleshooting-minting) in
+  the main README.
 - **`setup` fails with `already exists`**: a game seat is still
   there from an earlier try. Run `python3 game/office.py reset`.
 - **`no key in the proxy for: ...`**: game keys were revoked or

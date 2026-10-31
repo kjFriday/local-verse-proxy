@@ -336,6 +336,10 @@ fieldset { border: 0; padding: 0; min-width: 0; }
   font-weight: 600;
 }
 
+/* "Office game seat", under the seat name. */
+.card .kind { font-size: 14px; font-weight: 600; color: var(--ink-2);
+  margin-top: -6px; }
+
 .card-top {
   display: flex;
   align-items: flex-start;
@@ -358,6 +362,7 @@ fieldset { border: 0; padding: 0; min-width: 0; }
 .badge .icon { font-weight: 700; }
 .badge.ok .icon { color: var(--good-ink); }
 .badge.spent .icon { color: var(--warn-ink); }
+.badge.waiting .icon { color: var(--accent); }
 .badge.expired .icon { color: var(--ink-2); }
 .badge.blocked .icon { color: var(--danger-ink); }
 
@@ -459,11 +464,21 @@ fieldset { border: 0; padding: 0; min-width: 0; }
   margin: 0 0 16px;
 }
 
-.seg button { flex: 1; border: 0; background: none; }
+.seg button { flex: 1; border: 0; background: none;
+  color: var(--ink-2); }
 
 .seg button[aria-pressed="true"] {
   background: var(--surface);
   box-shadow: 0 1px 2px var(--ring);
+  color: var(--ink);
+}
+
+/* Dark: a raised pill would look sunken, so mark it like the tabs. */
+@media (prefers-color-scheme: dark) {
+  .seg button[aria-pressed="true"] {
+    background: var(--soft);
+    box-shadow: inset 0 -3px 0 var(--accent);
+  }
 }
 
 .cols { display: grid; gap: 8px 32px; }

@@ -19,8 +19,9 @@ machine, next to `seats.env`, and serves one page.
 
 ## Start it
 
-You need the proxy running first (main README, Steps 1 to 4), and
-Python 3.11 or newer on the proxy machine. Check with
+You need the proxy running first
+([main README](../README.md#step-1-check-your-tools), Steps 1 to 4),
+and Python 3.11 or newer on the proxy machine. Check with
 `python3 --version`. Then, in the repo folder:
 
 ```sh
@@ -52,7 +53,8 @@ With `--lan`, every device needs the password, the proxy machine
 included.
 
 To pick your own password instead, set it for that one run (12
-characters or more):
+characters or more, and random: not words or names, since a device
+on your network can try about one a second):
 
 ```sh
 FRONTDESK_PASSWORD='<your-password>' python3 gui/frontdesk.py --lan
@@ -69,8 +71,31 @@ Open it by the machine's IP address. To use a name instead, like
 Every card, with its seat name, models, budget and expiry. A bar
 shows how much of the budget is spent; it turns amber at 80% and red
 when the budget is used up. Each card says if it is **Working**,
-**Expired**, **Blocked**, or has its **Budget used up**, and what to
-do about it.
+**Expired**, **Blocked**, has its **Budget used up**, or is
+**Waiting for refill**, and what to do about it.
+
+**Budgets that refill.** Most budgets are a lifetime total. A card
+made with a refill (see New card), or with `--budget-duration` in
+the terminal, gets its budget back on a schedule, such as every day.
+Its card says how often, and when the next refill is, in your own
+time: `Refills every day, next at 1:00 AM (in 3 hours)`. The bar and
+the amount spent count only since the last refill. When such a card
+uses up its budget, it shows **Waiting for refill**. It works again
+by itself soon after the time shown: the proxy hands out refills
+about every 10 minutes, so one can come up to 10 minutes late. Its
+first round comes up to 15 minutes after the proxy starts, so just
+after a restart it can be later still. There is nothing to do, so
+don't cancel it.
+
+**Office game seats.** Cards the office game made (see
+[game/README.md](../game/README.md)) say **Office game seat**. Front
+Desk asks the game which seats are its own. Their budget is the game's
+daily mana, so they refill often and are often waiting. In practice
+mode the proxy refills them within seconds of the time shown, not
+every 10 minutes. To remove them, run `python3 game/office.py reset`
+on the proxy machine, when the game's week is over. Cancel card still
+works on them, with the same "are you sure?" step, but the game
+expects its seats until the reset.
 
 At the top, **Seats connect to** shows the base URL every seat's app
 uses, with a Copy button. It is a guess at the proxy machine's
@@ -85,11 +110,23 @@ use the name again.
 
 ### New card
 
-Pick a seat name, the models it may use, a budget and how long it
-lasts, then **Make key card**. The defaults come from the
+Pick a seat name, the models it may use, a budget, a refill and how
+long it lasts, then **Make key card**. The defaults come from the
 `DEFAULT_` lines in `seats.env`. Front Desk runs `./mint-key.sh` for
 you, so the rules are the same as in the terminal. A problem shows
-right under its field. `Sam` and `sam` count as the same seat.
+right under its field. `Sam` and `sam` count as the same seat. Names
+that start with `game-` are kept for the office game.
+
+**Refill** says if the budget comes back:
+
+- **Never** (the default): the budget is a lifetime total. To top
+  up, cancel the card and make a new one.
+- **Every day**, **Every week** or **Every month**: the budget comes
+  back in full, so it is an allowance per day, week or month. The
+  proxy's clock is UTC (world time, the same everywhere; each card
+  shows its refill in your own time). Refills come soon after
+  midnight UTC, on Mondays, or on the 1st of the month. This is
+  `./mint-key.sh --budget-duration` with `1d`, `1w` or `1mo`.
 
 The new key appears **once**, with the three things a seat needs:
 the key, the base URL and the model name. Use **Copy key** or
@@ -123,9 +160,13 @@ LiteLLM version. Every screen updates by itself; no need to reload.
   as a reminder.
 - **The password is the lock.** Anyone with it can make and cancel
   cards. A wrong password says how many tries are left: five from
-  one device lock that device out for 10 minutes; 20 from all
-  devices together lock everyone out. Restart Front Desk for a new
+  one device lock that device out for 10 minutes. Devices that typed
+  a wrong password get one try a second between them all, far too
+  few to guess the printed password. A device with no wrong tries is
+  never held up by another's guessing. Restart Front Desk for a new
   password; that also logs everyone out.
+- **No device can hog the page.** With `--lan`, one device may hold
+  at most 32 connections at once, so the others still get in.
 - **A login works only on the device that made it.** Its cookie is
   refused from any other address.
 - **Only its own addresses.** Front Desk answers only to the machine's
@@ -146,7 +187,8 @@ LiteLLM version. Every screen updates by itself; no need to reload.
   on Ubuntu 22.04, `sudo apt install python3.11`, then run
   `python3.11 gui/frontdesk.py`. On a Mac, `brew install python`.
 - **`missing .../seats.env`**: run it from the repo folder, after
-  Step 3 of the main README.
+  [Step 3](../README.md#step-3-make-your-secrets-file) of the main
+  README.
 - **`cannot use port 8040`**: something else uses it. Use the port it
   suggests, like `--port 8041`.
 - **The phone can't reach the page**: check that you used `--lan`,
@@ -159,17 +201,27 @@ LiteLLM version. Every screen updates by itself; no need to reload.
 - **"Reconnecting" at the top**: Front Desk itself stopped. Start it
   again in the terminal; the open page picks up by itself, no reload.
 - **"Not answering" at the top**: the proxy is down or still
-  starting. Run `docker compose ps`, and see Troubleshooting: the
-  proxy in the main README. The page recovers by itself.
+  starting. Run `docker compose ps`, and see
+  [Troubleshooting: the proxy](../README.md#troubleshooting-the-proxy)
+  in the main README. The page recovers by itself.
 - **"The proxy did not accept the master key"**: `seats.env` changed
   after the proxy started. Run
   `docker compose up -d --force-recreate proxy`.
 - **The tally says it shows the proxy's own numbers**: Front Desk
   could not run `docker compose exec`, usually because your user may
-  not use Docker. Today's numbers still show; full history needs
-  Docker access (main README, Troubleshooting: setting up).
-- **"Too many wrong passwords"**: wait 10 minutes, or restart Front
-  Desk.
+  not use Docker. Today's numbers still show. All time shows only
+  what the proxy still knows: each live card's spend (since its last
+  refill, if it refills), and for everything else only today's use.
+  Full history needs Docker access (main README,
+  [Troubleshooting: setting up](../README.md#troubleshooting-setting-up)).
+- **"Too many wrong passwords"**: wait the minutes it says (10 at
+  most), or restart Front Desk.
+- **"Too many tries just now"**: this device typed a wrong password
+  lately, and one was typed less than a second ago, here or on
+  another device. Wait a second and try again. If it keeps
+  happening, a device on your network is
+  guessing passwords: stop Front Desk, and use it without `--lan`
+  until you find that device.
 - **Copy key says "Press and hold the key to copy"**: over plain http
   this browser would not copy for the page. The key is selected:
   press and hold it (or right-click) and copy, or use Save as file.
@@ -199,9 +251,10 @@ seats, a year of made-up history, and chat traffic running.
   open answers in a few ms.
 - **Quick on phones.** Only the cards that changed are redrawn, and
   cards off screen are skipped: a busy update takes about 50 ms on a
-  slow phone, down from about 220 ms.
+  slow phone, down from about 220 ms. Each minute only the times on
+  the cards, like "in 3 minutes", are set again.
 - **Small, compressed, cached.** The page, script and style are
-  zipped once at start, about 16 KB in all, and the browser keeps
+  zipped once at start, about 18 KB in all, and the browser keeps
   them until they change.
 - **Standard library only.** No packages to install; it starts in
   about 0.1 s and uses about 30 MB of memory.

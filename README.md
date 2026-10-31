@@ -83,9 +83,10 @@ password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and
 `OLLAMA_API_BASE`. Then run the [3-check test](#step-6-the-3-check-test).
 
 **Prefer clicking?** Once the proxy is up, `python3 gui/frontdesk.py`
-opens Front Desk: a web page that makes and cancels key cards and
-shows the tally, on this machine or, with `--lan`, on your phone. See
-[gui/README.md](gui/README.md).
+starts Front Desk, a web page at `http://127.0.0.1:8040` that makes
+and cancels key cards and shows the tally. Open that address in a
+browser on this machine, or add `--lan` to use it from your phone.
+See [gui/README.md](gui/README.md).
 
 ## One lock, many keys
 
@@ -464,14 +465,18 @@ in `seats.env`, which the script rereads every run.
   bash, `$20` becomes `0` (a key refused every time) and `$25` becomes
   `5`; in zsh, the Mac default, `$20` vanishes.
 - `--duration 90d`: time until it expires, as a number and a
-  lowercase unit with no space: `d` days, `h` hours, `w` weeks.
-  `m` means minutes, not months: for months, use days like `90d`.
+  lowercase unit with no space: `d` days, `h` hours, `w` weeks, `mo`
+  months (like `3mo`). `m` means minutes, not months.
 - `--budget-duration 1d`: refill the budget on a schedule, so
   `--budget` becomes an allowance per day (or per `12h`, `1w`, `1mo`;
   `s` and `m` work too, but months only as `1mo`). Left out, the
   budget is a lifetime total. LiteLLM lines refills up with the
-  clock, in UTC: `1d` refills at midnight, `1h` on the hour, `1w` on
-  Mondays, `1mo` on the 1st.
+  clock, in UTC (world time; see the [glossary](#glossary)): `1d`
+  refills at midnight, `1h` on the hour, `1w` on Mondays, `1mo` on
+  the 1st. The proxy checks for due refills about every 10 minutes,
+  so a refill can land up to 10 minutes late. Its first check comes
+  up to 15 minutes after the proxy starts, so just after a restart a
+  refill can be later still.
 
 For example, a desk computer that may use both models, saved the same
 way as in Step 5:
@@ -492,6 +497,8 @@ key=$(./mint-key.sh desk --models local,claude --budget 20 \
   its seat name. Revoke it by seat name, then mint again.
 - **Seat names are unique.** Minting a taken name fails with
   `already exists`. Revoke the old key, or pick a name like `laptop-2`.
+  Names that start with `game-` are kept for the
+  [office game](game/README.md).
 
 ## Revoking a key
 
@@ -734,14 +741,16 @@ network over plain HTTP.
 - `seats.env`: your real secrets, made in Step 3. Never commit it.
 - `mint-key.sh`: mints and revokes seat keys, using the master key.
 - `gui/`: Front Desk, an optional web page for key cards and the
-  tally. It runs `mint-key.sh` for you. See `gui/README.md`.
+  tally. It runs `mint-key.sh` for you. See
+  [gui/README.md](gui/README.md).
 - `compose.yaml`: runs the proxy and Postgres, with the database in
   the `pgdata` volume.
 - `.gitignore` (hidden; `ls -a` shows it): keeps `seats.env` and its
   copies, `.env` and `*.key` files out of git.
 - `*.key`: seat keys you saved. Never commit them.
 - `game/`: an optional office game played with seat keys, where
-  finished work scores and burned tokens do not. See `game/README.md`.
+  finished work scores and burned tokens do not. See
+  [game/README.md](game/README.md).
 - `LICENSE`: the MIT license.
 
 ## Glossary
@@ -760,6 +769,9 @@ network over plain HTTP.
 - **Proxy:** a middleman between apps and the real AI services.
 - **Salt key:** `LITELLM_SALT_KEY`; encrypts stored credentials.
 - **Seat:** one person, computer or app with its own key.
+- **UTC:** world time, the same everywhere. Midnight UTC is 8 PM the
+  day before in New York (in summer) and 1 AM in Paris (in winter).
+  Front Desk shows refill times in your own time.
 - **Virtual key:** a seat's own key, limited by models, budget and
   expiry, that works only through this proxy.
 

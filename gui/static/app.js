@@ -4,7 +4,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const TABS = ["cards", "new", "tally"];
-const FIELDS = ["seat", "models", "budget", "duration"];
+const FIELDS = ["seat", "models", "budget", "refill", "duration"];
 let csrf = null;
 let state = null;
 let stateTag = "";      // ETag of the state on screen
@@ -22,6 +22,7 @@ let modelsShown = "";
 let needLogin = false;
 const drawn = new Map();      // card id -> [signature, element]
 const cancelled = new Map();  // card id -> note left in its place
+const pending = new Map();    // card id -> {busy} or {err} of a cancel
 
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
@@ -41,36 +42,62 @@ function h(tag, props, ...kids) {
 
 // --- numbers and times, in plain words -------------------------------
 
+// Made once: toLocaleString makes a new formatter on every call,
+// which is most of the time spent drawing a card.
+const NUM = new Intl.NumberFormat();
+const CENTS = new Intl.NumberFormat(undefined,
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const TINY = new Intl.NumberFormat(undefined,
+  { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const ONE = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+
+// A refill can leave a spend like -1e-18: that is $0, with no sign.
+const zero = (x) => x <= 0 && x > -5e-7 ? 0 : x;
+
+// Cents, and more digits for tiny budgets like a game seat's $0.015.
 function money(x) {
   if (x == null) return "—";
-  if (x > 0 && x < 0.01) return "under $0.01";
-  return "$" + x.toFixed(2);
+  x = zero(x);
+  if (x > 0 && x < 0.0001) return "under $" + TINY.format(0.0001);
+  return "$" + (x < 0.1 ? TINY : CENTS).format(x);
 }
 
 // Tiles are narrow: no cents from $100 up, and short words.
 function moneyShort(x) {
   if (x == null) return "—";
-  if (x > 0 && x < 0.01) return "<$0.01";
-  if (x >= 100) return "$" + Math.round(x).toLocaleString();
-  return "$" + x.toFixed(2);
+  x = zero(x);
+  if (x > 0 && x < 0.01) return "<$" + CENTS.format(0.01);
+  if (x >= 99.995) return "$" + NUM.format(Math.round(x));
+  return "$" + CENTS.format(x);
 }
 
 function count(x) {
   if (x == null) return "—";
-  if (x >= 1e6) return (x / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
-  if (x >= 1e4) return Math.round(x / 1e3) + "K";
-  return x.toLocaleString();
+  const k = Math.round(x / 1e3);
+  if (x >= 1e6 || k >= 1000) return ONE.format(x / 1e6) + "M";
+  if (x >= 1e4) return k + "K";
+  return NUM.format(x);
 }
 
 // "30d" -> "30 days", as mint-key.sh's --duration takes it.
+const UNITS = { s: "second", m: "minute", h: "hour", d: "day",
+                w: "week", mo: "month" };
+
 function lasts(d) {
-  const m = /^(\d+)([hdw])$/.exec(d);
+  const m = /^(\d+)(mo|[smhdw])$/.exec(d || "");
   if (!m) return d;
-  return plural(+m[1], { h: "hour", d: "day", w: "week" }[m[2]]);
+  return plural(+m[1], UNITS[m[2]]);
+}
+
+// A refill period: "1d" -> "every day", "2m" -> "every 2 minutes".
+function every(d) {
+  const m = /^(\d+)(mo|[smhdw])$/.exec(d || "");
+  if (!m) return "every " + d;
+  return "every " + (m[1] === "1" ? UNITS[m[2]] : lasts(d));
 }
 
 function plural(n, word) {
-  return n + " " + word + (n === 1 ? "" : "s");
+  return NUM.format(n) + " " + word + (n === 1 ? "" : "s");
 }
 
 function ago(ms) {
@@ -88,15 +115,34 @@ function ago(ms) {
 const DAY = new Intl.DateTimeFormat(undefined,
   { day: "numeric", month: "short", year: "numeric" });
 
+const CLOCK = new Intl.DateTimeFormat(undefined,
+  { hour: "numeric", minute: "2-digit" });
+const WHEN = new Intl.DateTimeFormat(undefined, { weekday: "short",
+  day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+
+// How long until a time ahead: "12 minutes", "3 hours", "5 days".
+function span(ms) {
+  const min = ms / 6e4;
+  return min < 90 ? plural(Math.max(1, Math.round(min)), "minute")
+    : min < 2880 ? plural(Math.round(min / 60), "hour")
+    : plural(Math.round(min / 1440), "day");
+}
+
 function until(iso) {
   const ms = Date.parse(iso) - Date.now();
   const day = DAY.format(new Date(iso));
   if (ms <= 0) return "Expired " + ago(-ms) + " (" + day + ")";
-  const min = ms / 6e4;
-  const left = min < 90 ? plural(Math.max(1, Math.round(min)), "minute")
-    : min < 2880 ? plural(Math.round(min / 60), "hour")
-    : plural(Math.round(min / 1440), "day");
-  return "Expires in " + left + " (" + day + ")";
+  return "Expires in " + span(ms) + " (" + day + ")";
+}
+
+// The next refill, in local time: "at 1:00 AM (in 3 hours)". Past
+// it, the proxy's reset job is about to run.
+function refillAt(iso) {
+  const ms = Date.parse(iso) - Date.now();
+  if (!(ms > 0)) return "any moment now";
+  const at = (ms < 864e5 ? CLOCK : WHEN).format(new Date(iso));
+  return "at " + at + " (" + (ms < 6e4 ? "in under a minute"
+    : "in " + span(ms)) + ")";
 }
 
 // --- talking to frontdesk.py -----------------------------------------
@@ -161,6 +207,7 @@ async function boot() {
   }
   setupDialog();
   setInterval(renderSub, 1000);
+  setInterval(tickCards, 1000);
   let s;
   try {
     s = await api("/api/session");
@@ -372,6 +419,44 @@ function render(s) {
 }
 
 let emptyCard = null;
+let cardsMinute = 0;     // the minute the card times were last set in
+let nextDue = Infinity;  // the next refill time on any card, in ms
+
+// Times on cards are in words, like "in 3 minutes", so they change
+// even when nothing else does. Each sits in its own span.
+const TIMES = {
+  ago: (iso) => ago(Date.now() - Date.parse(iso)),
+  until,
+  refill: refillAt,
+  // When a card that waits for its refill works again. The proxy
+  // hands refills out on a timer, not on the dot (gui/README.md).
+  wait: (iso) => Date.parse(iso) > Date.now()
+    ? refillAt(iso) + ", or soon after" : "any moment now",
+};
+
+function timeWords(kind, iso) {
+  return h("span", { "data-time": kind, "data-at": iso,
+                     text: TIMES[kind](iso) });
+}
+
+// Each minute, and as a refill falls due, set only those words
+// again: the cards stay as they are, with any focus, selection or
+// message in them.
+function tickCards() {
+  if (!state || !csrf) return;
+  const now = Date.now();
+  if (now < nextDue && Math.floor(now / 6e4) === cardsMinute) return;
+  cardsMinute = Math.floor(now / 6e4);
+  nextDue = Infinity;
+  for (const c of state.cards) {
+    const due = Date.parse(c.resets);
+    if (due > now) nextDue = Math.min(nextDue, due);
+  }
+  for (const el of $("#cards-list").querySelectorAll("[data-time]")) {
+    const text = TIMES[el.dataset.time](el.dataset.at);
+    if (el.textContent !== text) el.textContent = text;
+  }
+}
 
 function renderCards() {
   const cards = state.cards;
@@ -382,11 +467,13 @@ function renderCards() {
     tile("Key cards", cards.length),
     tile("Working", working),
     tile("Spent today", moneyShort(today)));
-  // Rebuild only the cards that changed. The minute is in the
-  // signature so "last used" and "expires in" stay true.
-  const minute = Math.floor(Date.now() / 6e4);
+  // Rebuild only the cards that changed.
+  const now = Date.now();
   const els = cards.filter((c) => !cancelled.has(c.id)).map((c) => {
-    const sig = JSON.stringify(c) + (confirming === c.id) + minute;
+    const due = Date.parse(c.resets);
+    if (due > now) nextDue = Math.min(nextDue, due);
+    const sig = JSON.stringify([c, confirming === c.id,
+                                pending.get(c.id) || null]);
     const old = drawn.get(c.id);
     if (old && old[0] === sig) return old[1];
     const el = cardView(c);
@@ -404,37 +491,56 @@ function renderCards() {
                text: "Make the first one" }));
     els.push(emptyCard);
   }
+  // A card drawn again keeps the keyboard focus on the same button.
+  const f = document.activeElement;
+  const fCard = f && f.tagName === "BUTTON" ? f.closest(".card") : null;
+  // Cards that stay are never moved, so focus and selected text in
+  // them survive a card coming or going.
   const list = $("#cards-list");
-  const kids = [...list.children];
-  if (kids.length === els.length &&
-      kids.every((k, i) => k.dataset.key === els[i].dataset.key)) {
-    els.forEach((el, i) => { if (kids[i] !== el) kids[i].replaceWith(el); });
-  } else {
-    list.replaceChildren(...els);
+  const want = new Set(els);
+  for (const k of [...list.children]) if (!want.has(k)) k.remove();
+  els.forEach((el, i) => {
+    const at = list.children[i];
+    if (at !== el) list.insertBefore(el, at || null);
+  });
+  if (fCard && document.activeElement !== f) {
+    const d = drawn.get(fCard.dataset.key);
+    const same = d && [...d[1].querySelectorAll("button")].find(
+      (b) => b.className === f.className);
+    if (same) same.focus({ preventScroll: true });
   }
   const ids = new Set(cards.map((c) => c.id));
   for (const id of drawn.keys()) if (!ids.has(id)) drawn.delete(id);
+  // Cards kept from before may have been drawn in an earlier minute.
+  tickCards();
 }
 
 function tile(label, value) {
   return h("div", { class: "tile" },
     h("div", { class: "label", text: label }),
-    h("div", { class: "value", text: String(value) }));
+    h("div", { class: "value",
+               text: typeof value === "number" ? NUM.format(value)
+                 : value }));
 }
 
 const STATES = {
   ok: ["✓", "Working"],
   spent: ["!", "Budget used up"],
+  waiting: ["↻", "Waiting for refill"],
   expired: ["○", "Expired"],
   blocked: ["✕", "Blocked"],
 };
+
+// Seats the office game made. Front Desk asks the game which ones.
+const isGame = (c) => c.game === true;
+const RESET = "python3 game/office.py reset";
 
 // What to do about a card that stopped working.
 const HINTS = {
   expired: "An expired card still holds its seat name. Cancel it to " +
     "free the name.",
-  spent: "A budget never refills: cancel the card and make a new one " +
-    "to top up.",
+  spent: "This budget never refills: cancel the card and make a new " +
+    "one to top up.",
   blocked: "Someone blocked it in the proxy's own admin tools. Cancel " +
     "it to free the name.",
 };
@@ -452,14 +558,18 @@ function cardView(c) {
   meter.firstChild.style.width = (share * 100).toFixed(1) + "%";
   if (share >= 1) meter.classList.add("full");
   else if (share >= 0.8) meter.classList.add("high");
+  // A budget that refills counts only since the last refill.
+  const refills = c.refills && c.budget != null;
   const spent = c.budget == null ? "Spent " + money(c.spent) +
     ", no budget limit" : "Spent " + money(c.spent) + " of " +
-    money(c.budget);
+    money(c.budget) + (refills ? " since the last refill" : "");
+  if (refills) {
+    meter.setAttribute("aria-label", "Spent since the last refill");
+  }
   const small = [];
-  small.push(c.expires ? until(c.expires) : "Never expires");
+  small.push(c.expires ? timeWords("until", c.expires) : "Never expires");
   if (c.ends) small.push("key ends in …" + c.ends);
-  if (c.used) small.push("last used " + ago(Date.now() -
-                                             Date.parse(c.used)));
+  if (c.used) small.push(["last used ", timeWords("ago", c.used)]);
   const el = h("article", { class: "card" + (c.state === "ok" ? ""
                                               : " dim") },
     h("div", { class: "card-top" },
@@ -467,18 +577,36 @@ function cardView(c) {
       h("span", { class: "badge " + c.state },
         h("span", { class: "icon", "aria-hidden": "true", text: icon }),
         word)),
+    isGame(c) && h("p", { class: "kind", text: "Office game seat" }),
     h("p", { text: "Models: " + (c.models.join(", ") || "all") }),
     meter,
     h("p", { text: spent }),
+    // Waiting: the hint below says when, so it is said once.
+    refills && h("p", { class: "small" }, "Refills " + every(c.refills),
+      c.resets && c.state !== "waiting" &&
+        [", next ", timeWords("refill", c.resets)]),
     h("p", { class: "small" }, dots(small)));
-  if (HINTS[c.state]) {
+  if (c.state === "waiting") {
+    el.append(h("p", { class: "small" }, "It refills on its own ",
+      c.resets ? timeWords("wait", c.resets) : "soon",
+      ". Nothing to do: no need to cancel it."));
+  } else if (HINTS[c.state]) {
     el.append(h("p", { class: "small", text: HINTS[c.state] }));
+  }
+  if (isGame(c)) {
+    el.append(h("p", { class: "small" }, "The office game made it. " +
+      "To remove all game seats, run ", h("code", { text: RESET }), "."));
   }
   if (confirming === c.id) el.append(confirmView(c, name));
   else {
+    // Its cancel may still be running, or have failed, while another
+    // card asks "are you sure?". say() has told screen readers.
+    const p = pending.get(c.id) || {};
+    if (p.err) el.append(h("p", { class: "msg", text: p.err }));
     el.append(h("div", { class: "actions" },
-      h("button", { type: "button", class: "danger",
-        onclick: () => askCancel(c.id), text: "Cancel card" })));
+      h("button", { type: "button", class: "danger", disabled: p.busy,
+        onclick: () => askCancel(c.id),
+        text: p.busy ? "Cancelling…" : "Cancel card" })));
   }
   return el;
 }
@@ -486,57 +614,90 @@ function cardView(c) {
 // Short facts joined by dots; each one stays on a single line.
 function dots(bits) {
   return bits.flatMap((b, i) => [i ? " · " : null,
-    h("span", { class: "nw", text: b })]);
+    h("span", { class: "nw" }, b)]);
 }
 
 function askCancel(id) {
   confirming = id;
+  if (!(pending.get(id) || {}).busy) pending.delete(id);
   renderCards();
   // The safe answer gets the focus, not the destructive one.
   const keep = drawn.get(id)[1].querySelector(".keep");
   if (keep) keep.focus({ preventScroll: true });
 }
 
+// The cancel's progress is kept in pending, so a live update that
+// redraws the card while it waits still shows it.
 function confirmView(c, name) {
-  const msg = h("p", { class: "msg", role: "alert" });
+  const p = pending.get(c.id) || {};
+  // No role=alert: cancelCard has said the error once, and the box
+  // may be drawn again while it is open.
+  const msg = h("p", { class: "msg", text: p.err });
   const yes = h("button", { type: "button", class: "danger solid",
-                            text: "Yes, cancel it" });
-  yes.addEventListener("click", async () => {
-    yes.disabled = true;
-    yes.textContent = "Cancelling…";
-    try {
-      await api("/api/revoke", { seat: c.seat, id: c.id });
-      leaveNote(c.id, yes.closest(".card"),
-                "Cancelled the key card for " + name + ".");
-    } catch (e) {
-      msg.textContent = e.message;
-      yes.disabled = false;
-      yes.textContent = "Yes, cancel it";
-    }
-  });
+    disabled: p.busy, text: p.busy ? "Cancelling…" : "Yes, cancel it",
+    onclick: () => cancelCard(c, name, yes) });
   return h("div", { class: "confirm", role: "group",
                     "aria-label": "Confirm cancel" },
     h("p", { text: "Cancel the key card for " + name + "? Apps using " +
       "it stop working at once. This can't be undone." }),
+    isGame(c) && h("p", {}, "The game still counts on this seat. To " +
+      "end the game, run ", h("code", { text: RESET }), " instead."),
     h("div", { class: "actions" }, yes,
       h("button", { type: "button", class: "keep", text: "Keep it",
-        onclick: () => { confirming = null; renderCards(); } })),
+        onclick: () => {
+          confirming = null;
+          if (!(pending.get(c.id) || {}).busy) pending.delete(c.id);
+          renderCards();
+          // Back on the button that asked, not lost on the page.
+          const d = drawn.get(c.id);
+          const b = d && d[1].querySelector("button.danger");
+          if (b) b.focus({ preventScroll: true });
+        } })),
     msg);
+}
+
+async function cancelCard(c, name, yes) {
+  // Where the card is now, in case it has left the list by the end.
+  const card = yes.closest(".card");
+  const was = { index: [...$("#cards-list").children].indexOf(card),
+                height: card.offsetHeight };
+  pending.set(c.id, { busy: true });
+  yes.disabled = true;
+  yes.textContent = "Cancelling…";
+  yes.closest(".confirm").querySelector(".msg").textContent = "";
+  try {
+    await api("/api/revoke", { seat: c.seat, id: c.id });
+    pending.delete(c.id);
+    leaveNote(c.id, "Cancelled the key card for " + name + ".", was);
+  } catch (e) {
+    // Drawn again from pending: the card on screen now may be a new
+    // element, not the one that was clicked.
+    pending.set(c.id, { err: e.message });
+    say(e.message);
+    if (state) renderCards();
+  }
 }
 
 // Swap a cancelled card for a note of the same height, so the message
 // is where the thumb is and nothing below jumps up under it.
-function leaveNote(id, card, text) {
+function leaveNote(id, text, was) {
   const list = $("#cards-list");
   const note = h("div", { class: "card gone", "data-key": "gone-" + id },
     h("p", { text }));
-  if (card) note.style.minHeight = card.offsetHeight + "px";
-  cancelled.set(id, { el: note,
-    index: Math.max(0, [...list.children].indexOf(card)) });
-  confirming = null;
+  // The card as drawn now: a live update may have redrawn it, or
+  // taken it off the list already.
+  const d = drawn.get(id);
+  const card = d && d[1].parentNode === list ? d[1] : null;
+  const height = card ? card.offsetHeight : was.height;
+  if (height) note.style.minHeight = height + "px";
+  cancelled.set(id, { el: note, index: Math.max(0, card
+    ? [...list.children].indexOf(card) : was.index) });
+  // Another card may be asking "are you sure?" by now: leave it open,
+  // and leave the page where it is.
+  if (confirming === id) confirming = null;
   say(text);
   renderCards();
-  note.firstChild.scrollIntoView({ block: "nearest" });
+  if (!confirming) note.firstChild.scrollIntoView({ block: "nearest" });
   setTimeout(() => {
     cancelled.delete(id);
     if (state) renderCards();
@@ -613,8 +774,11 @@ async function mint(ev) {
   const seat = $("#seat").value.trim();
   const models = [...document.querySelectorAll("#models input:checked")]
     .map((i) => i.value);
-  // No shell here, so a typed $ is harmless: drop it.
-  const budget = $("#budget").value.trim().replace(/^\$/, "");
+  // No shell here, so a typed $ is harmless: drop it. The page writes
+  // 2,50 in some languages, so take a decimal comma too.
+  const budget = $("#budget").value.trim().replace(/^\$/, "")
+    .replace(/^(\d{1,6}),(\d{1,2})$/, "$1.$2");
+  const refill = $("#refill").value;
   const duration = $("#duration").value;
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(seat)) {
     return fieldError("seat", "Seat names use letters, digits, dots, " +
@@ -630,7 +794,8 @@ async function mint(ev) {
   btn.disabled = true;
   btn.textContent = "Making the card…";
   try {
-    const r = await api("/api/mint", { seat, models, budget, duration });
+    const r = await api("/api/mint", { seat, models, budget, refill,
+                                       duration });
     $("#seat").value = "";
     showKey(r);
   } catch (e) {
@@ -655,7 +820,9 @@ function setupDialog() {
     copy($("#nk-url"), e.currentTarget, "address"));
   $("#nk-save").addEventListener("click", saveKey);
   $("#nk-done").addEventListener("click", () => closeKey());
-  d.addEventListener("close", wipeKey);
+  // closeKey has wiped it already; this is for other ways out. A
+  // late event must not wipe a key shown since.
+  d.addEventListener("close", () => { if (!d.open) wipeKey(); });
   d.addEventListener("cancel", (e) => {
     // Esc: make sure it was saved first.
     if (!confirm("Close? The key is not shown again.")) e.preventDefault();
@@ -671,8 +838,9 @@ function showKey(r) {
   $("#nk-save").dataset.seat = r.seat;
   $("#nk-model").textContent = r.models.join(" or ");
   $("#nk-models").textContent =
-    (r.models.length > 1 ? "Any one of these. " : "") + "Budget $" +
-    r.budget + " · lasts " + lasts(r.duration) + ".";
+    (r.models.length > 1 ? "Any one of these. " : "") + "Budget " +
+    money(+r.budget) + (r.refill ? ", refills " + every(r.refill) : "") +
+    " · lasts " + lasts(r.duration) + ".";
   if (d.showModal) d.showModal();
   else d.setAttribute("open", "");
   $("#nk-copy").focus();
@@ -763,8 +931,9 @@ function saveKey(e) {
 function renderTally() {
   if (!state) return;
   const t = state.tally;
+  const refills = state.cards.some((c) => c.refills);
   // Drawn only while its tab is open, and only when it changed.
-  const sig = JSON.stringify([t, tallyView]);
+  const sig = JSON.stringify([t, tallyView, refills]);
   if (sig === tallyDrawn) return;
   tallyDrawn = sig;
   for (const b of document.querySelectorAll(".seg button")) {
@@ -785,13 +954,16 @@ function renderTally() {
     : { spend: r.spend, reqs: r.reqs, tokens: r.tokens, fails: r.fails };
   const sum = (rows, f) => rows.some((r) => pick(r)[f] == null) ? null
     : rows.reduce((a, r) => a + pick(r)[f], 0);
+  // Seats and models add up the same use. In the proxy's own numbers,
+  // all time per seat also has each live card's spend: the larger.
+  const total = (f) => {
+    const m = sum(t.models, f), s = sum(t.seats, f);
+    return m == null ? s : s == null ? m : Math.max(m, s);
+  };
   $("#tally-tiles").replaceChildren(
-    tile("Spent", moneyShort(sum(t.models, "spend") ??
-                             sum(t.seats, "spend"))),
-    tile("Requests", count(sum(t.models, "reqs") ??
-                           sum(t.seats, "reqs"))),
-    tile("Tokens", count(sum(t.models, "tokens") ??
-                         sum(t.seats, "tokens"))));
+    tile("Spent", moneyShort(total("spend"))),
+    tile("Requests", count(total("reqs"))),
+    tile("Tokens", count(total("tokens"))));
   // Models on your own Ollama cost $0: then bars show tokens.
   const all = [...t.seats, ...t.models].map(pick);
   const by = all.some((v) => v.spend > 0) ? "spend"
@@ -804,15 +976,24 @@ function renderTally() {
     r.name || "(refused before a model was picked)"));
   const midnight = new Date(t.day + "T00:00:00Z").toLocaleTimeString(
     undefined, { hour: "numeric", minute: "2-digit" });
+  const own = t.source === "proxy";
   let note = today ? "Today runs from midnight UTC, which is " +
-    midnight + " your time." : "All time: everything the proxy has " +
-    "saved, cancelled cards included.";
+    midnight + " your time." : own ? "All time: what the proxy " +
+    "still knows." : "All time: everything the proxy has saved, " +
+    "cancelled cards included.";
   if (by === "tokens") {
     note += " Bars show tokens, since everything used here was free.";
   }
-  if (t.source === "proxy") {
+  if (own) {
     note += " Showing the proxy's own numbers: full history needs " +
       "Front Desk to run as a user who can run docker compose.";
+    // The proxy keeps each live card's spend, only since its last
+    // refill if it refills; everything else only for today.
+    if (!today) {
+      note += " Requests and tokens here are recent only, as is the " +
+        "spend of models" + (refills ? ", cancelled cards and cards " +
+        "that refill." : " and cancelled cards.");
+    }
   }
   $("#tally-note").textContent = note;
 }
@@ -845,7 +1026,7 @@ function bars(rows, pick, by, label) {
         bits.push(count(v.tokens) + " tokens");
       }
       if (by !== "spend" && v.spend != null) bits.push(money(v.spend));
-      if (v.fails) bits.push(v.fails + " refused");
+      if (v.fails) bits.push(NUM.format(v.fails) + " refused");
     }
     const name = label(r) + (refused && r.name ? " · refused" : "");
     return h("div", { class: "bar-row" },
