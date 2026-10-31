@@ -1,0 +1,33 @@
+# LiteLLM proxy config for the office game, practice mode. Swapped in
+# for config.yaml by game/compose.game.yaml. Both models are served by
+# the fake-ollama stub, with shadow prices, so mana is real even with
+# no AI anywhere. 1 mana = $0.00001 (see game/rules.toml).
+
+model_list:
+  # Cheap and good enough: 0.01 mana per prompt token.
+  - model_name: local
+    litellm_params:
+      model: ollama_chat/office-local
+      api_base: http://fake-ollama:11434
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000002
+
+  # About 10x the price. Bots that use it make fewer mistakes.
+  - model_name: pro
+    litellm_params:
+      model: ollama_chat/office-pro
+      api_base: http://fake-ollama:11434
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
+
+general_settings:
+  # Same lock and database as config.yaml.
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  # Never keep prompts or replies in LiteLLM_SpendLogs. This is the
+  # default; it is spelled out because the game promises it. The game
+  # reads only tags, token counts and spend.
+  store_prompts_in_spend_logs: false
+
+litellm_settings:
+  drop_params: true

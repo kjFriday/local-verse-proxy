@@ -3,6 +3,7 @@
 # is never printed.
 #
 #   ./mint-key.sh <seat> [--models a,b] [--budget USD] [--duration 30d]
+#                        [--budget-duration 1d]
 #   ./mint-key.sh --revoke <key>
 #   ./mint-key.sh --revoke-seat <seat>
 set -euo pipefail
@@ -20,7 +21,7 @@ if [[ "$LITELLM_MASTER_KEY${LITELLM_SALT_KEY:-}" == *change-me* ]]; then
 fi
 url="${PROXY_URL:-http://localhost:4000}"
 
-usage() { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "$*" >&2; exit 2; }
 
 # Send the master key through a header file on stdin, so it never shows
@@ -58,6 +59,7 @@ shift
 models="${DEFAULT_MODELS:-local}"
 budget="${DEFAULT_BUDGET:-5}"
 duration="${DEFAULT_DURATION:-30d}"
+bdur=""  # empty: the budget is a lifetime total, as before
 
 while [[ $# -gt 0 ]]; do
   [[ $# -ge 2 ]] || usage
@@ -65,22 +67,28 @@ while [[ $# -gt 0 ]]; do
     --models)   models="$2";   shift 2 ;;
     --budget)   budget="$2";   shift 2 ;;
     --duration) duration="$2"; shift 2 ;;
+    --budget-duration) bdur="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ "$budget" =~ ^[0-9]+([.][0-9]+)?$ ]] \
   || die "--budget must be a number of US dollars, like 5 or 2.50"
+# Same units LiteLLM accepts: s, m, h, d, w or mo, after a whole number.
+[[ -z "$bdur" || "$bdur" =~ ^[1-9][0-9]*(s|m|h|d|w|mo)$ ]] \
+  || die "--budget-duration must look like 30m, 12h, 1d, 1w or 1mo"
 
 body="$(jq -nc \
   --arg seat "$seat" --arg models "$models" \
   --argjson budget "$budget" --arg duration "$duration" \
+  --arg bdur "$bdur" \
   '{key_alias: $seat,
     models: ($models | split(",") | map(gsub("^\\s+|\\s+$"; ""))
                      | map(select(length > 0))),
     max_budget: $budget,
     duration: $duration,
-    metadata: {seat: $seat}}')"
+    metadata: {seat: $seat}}
+   + (if $bdur == "" then {} else {budget_duration: $bdur} end)')"
 
 # An empty list means "all models" to LiteLLM. Never mint that.
 [[ "$(jq '.models | length' <<< "$body")" -gt 0 ]] \
