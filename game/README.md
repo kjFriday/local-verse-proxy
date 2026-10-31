@@ -11,8 +11,27 @@ game's scoring rewards work that got done, done cheaply.
 > real LiteLLM v1.106.6 and Postgres, with bots as players and a fake
 > model server. Real mode, for people, is a plan, not a feature yet.
 
+## In plain terms
+
+Picture the front desk from the main README: one desk, one pass per
+person. This game gives some of those passes a daily allowance,
+called **mana**, and posts jobs, called **quests**.
+
+Robot workers take the quests, use AI to do them, and hand them in.
+A pretend manager approves the work or sends it back. A worker that
+runs out of mana is turned away at the desk until tomorrow.
+
+At the end of each day there are two boards. One ranks who used the
+most AI. The other ranks who finished the most work, cheaply. They
+do not agree, and that is the point: the robots that burn the most
+AI finish the least.
+
+Teams are called **guilds**. They are ranked by points per member,
+so a big team does not win just by being big.
+
 ## Contents
 
+- [In plain terms](#in-plain-terms)
 - [The idea in one table](#the-idea-in-one-table)
 - [Why: the Goodhart trap](#why-the-goodhart-trap)
 - [Try it: practice mode](#try-it-practice-mode)
@@ -39,7 +58,8 @@ game's scoring rewards work that got done, done cheaply.
 | The manager   | Approves work, or sends it back for a redo  |
 
 Two models: `local`, cheap, and `pro`, about 10 times the price. Work
-done on `pro` is approved more often. Using it is a real trade-off.
+done on `pro` is approved more often, but with these rules it never
+pays for itself (see [why](#why-it-works-that-way)).
 
 ## Why: the Goodhart trap
 
@@ -50,78 +70,106 @@ calls and the priciest model all push you up it, and none of them
 finish anything.
 
 Here are both boards from a real practice run, side by side. Same
-office, same two days, same bots:
+office, same three days, same bots:
 
 ```text
-Office 5ed781, practice week: after day 2 of 5 (2m days)
+Office 975865, practice week: after day 3 of 5 (2m days)
 1 mana = $0.00001; daily mana 1,500 per seat
 
 GUILDS: points per member (finished, efficient work)
-  owls     4 members   308.4  ##############################
-  foxes    3 members   301.8  #############################
-  bees     3 members   161.3  ################
+  foxes    3 members   512.9  ##############################
+  owls     4 members   503.7  #############################
+  bees     3 members   353.0  #####################
 
 WHO FINISHED WORK (game score)      | WHO BURNED TOKENS (naive board)
  # seat   persona  done  eff    pts |  # seat      tokens   mana  done
- 1 fern   frugal     21 1.50  706.5 |  1 spike    256,716  3,015   12
- 2 moss   frugal     20 1.50  695.2 |  2 blitz    126,153  3,144    7
- 3 bea    balanced   19 1.02  382.9 |  3 bea       25,683    614   19
- 4 ben    balanced   17 0.85  247.8 |  4 ben       25,641  1,977   17
- 5 spike  spammy     12 0.50  178.5 |  5 gia       22,265  3,067   11
- 6 gia    gearhead   11 0.50  165.8 |  6 gus       22,119  3,034   17
- 7 gus    gearhead   17 0.50  144.2 |  7 fern      15,053    202   21
- 8 blitz  spammy      7 0.50   70.5 |  8 moss      14,685    193   20
- 9 sal    slacker     2 1.50   31.5 |  9 sal        1,285     17    2
-10 sid    slacker     0 0.00    0.0 | 10 sid          802     11    0
+ 1 moss   frugal     31 1.50 1369.5 |  1 spike    286,718  4,604   13
+ 2 fern   frugal     35 1.50 1185.0 |  2 blitz    190,125  4,581    9
+ 3 ben    balanced   40 1.03  822.8 |  3 ben       51,161  1,873   40
+ 4 bea    balanced   28 0.75  529.5 |  4 bea       47,487  3,029   28
+ 5 gus    gearhead   23 0.33  169.0 |  5 gus       33,384  4,604   23
+ 6 gia    gearhead   22 0.33  156.1 |  6 gia       33,131  4,577   22
+ 7 sid    slacker     3 1.50  131.2 |  7 fern      26,620    356   35
+ 8 spike  spammy     13 0.33  107.1 |  8 moss      25,807    342   31
+ 9 blitz  spammy      9 0.33   80.2 |  9 sid        4,043     55    3
+10 sal    slacker     3 1.37   62.0 | 10 sal        3,099     43    3
 
 GOODHART CHECK
-  Token board #1: spike (spammy), 256,716 tokens, 12 done, 178 pts
-  Spend board #1: blitz (spammy), 3,144 mana, 7 done, 70 pts
-  Score board #1: fern (frugal), 15,053 tokens, 21 done, 706 pts
-  spike burned 17.1x the tokens of fern, for 0.57x the finished quests
-  and 0.25x the points.
-  Rank match, tokens vs score: +0.24 (+1 same order, 0 none, -1 reversed)
+  Most tokens: spike (spammy), 286,718 tokens, 13 done, 107 pts
+  Most mana:   spike (spammy), 4,604 mana, 13 done, 107 pts
+  Top score:   moss (frugal), 25,807 tokens, 31 done, 1370 pts
+  spike burned 11.1x the tokens of moss, for 0.42x the finished quests
+  and 0.08x the points.
+  Rank match, tokens vs score: -0.07 (+1 same order, 0 none, -1 reversed)
 ```
 
-Spammy `spike` tops the token board with 17 times the tokens of
-frugal `fern`, yet finished fewer quests, for a quarter of the
-points. The frugal bots sit near the bottom of the token board and on
-top of the real one. The two orders barely agree: a rank match of
-+0.24, where +1 would mean the same order.
+How to read it: **done** is quests that counted, **eff** their
+average efficiency, **pts** the points (see
+[How scoring works](#how-scoring-works)). **tokens** and **mana** are
+what each seat spent on models; 1 mana = $0.00001. The mana column
+is the spend board.
 
-Ranking by spend is no better. The four bots that hit their daily
-mana cap spent 31 times the mana of the two frugal ones, and scored
-40% as much. Pay people by either naive board and you buy waste.
+Spammy `spike` tops the token board with 11 times the tokens of
+frugal `moss`, yet finished fewer than half as many quests, for a
+twelfth of the points. The frugal bots sit near the bottom of the
+token board and on top of the real one. The two orders do not agree
+at all: a rank match of -0.07, where +1 would mean the same order.
+
+Ranking by spend is no better. Each of the four bots that hit its
+daily mana cap every day (the gearheads and the spammy ones) spent
+about 13 times the mana of a frugal bot, and scored about a tenth as
+much. Even slacker `sid`, with 3 quests done cheaply, beat both
+spammy bots. Pay people by either naive board and you buy waste.
+
+Two more things to spot. `ben` finished the most quests, 40, but
+most at about par, and some on `pro` at many times par. The frugal
+bots did theirs for under half of par, so they score more. And
+`moss` ranks above `fern` with fewer quests: it
+drew more large ones, which pay a bit more per call
+(`board --seat moss` lists every quest).
 
 The day summary shows the proxy's real refusals. These bots ran out
-of mana and sat idle for the rest of day 2:
+of mana and sat idle for the rest of day 3:
 
 ```text
-Day 2 done: bots worked 84 s, 358 calls answered.
-  spend logs: 358 of 358 rows after 0 s
-  quests: 80 posted, 72 counted, 3 thrown out (too few calls), 0 given up,
-          5 unfinished, 0 never picked up
-  blitz: out of mana at 0:38 into the day (HTTP 422), idle after that
-  gus: out of mana at 0:49 into the day (HTTP 422), idle after that
-  gia: out of mana at 0:50 into the day (HTTP 422), idle after that
-  spike: out of mana at 0:56 into the day (HTTP 422), idle after that
+Day 3 done: bots worked 82 s, 342 calls answered.
+  spend logs: 342 of 342 rows after 2 s
+  quests: 100 posted, 74 counted, 3 thrown out (too few calls), 2 given up,
+          8 unfinished, 13 never picked up
+  blitz: out of mana at 0:17 into the day (HTTP 422), idle after that
+  gus: out of mana at 0:52 into the day (HTTP 422), idle after that
+  gia: out of mana at 0:52 into the day (HTTP 422), idle after that
+  spike: out of mana at 0:57 into the day (HTTP 422), idle after that
+  bea: out of mana at 1:15 into the day (HTTP 422), idle after that
 ```
 
 ## Try it: practice mode
 
 You need the proxy from the [main README](../README.md) working
 first (Steps 1 to 4). Practice mode needs no Ollama and no API key.
+The game needs Python 3.11 or newer:
+
+```sh
+python3 --version   # 3.11 or newer
+```
+
+Older? On Ubuntu 22.04, `sudo apt install python3.11`, then type
+`python3.11` where this guide says `python3`. On a Mac,
+`brew install python`.
 
 **Heads up:** while practice mode is on, the proxy serves only the
-two fake practice models, to every seat. Try it on a spare machine,
-or when nobody needs the real models.
+two fake practice models, to every seat, and real seats pay the
+practice prices from their own budgets (tiny amounts). Try it on a
+spare machine, or when nobody needs the real models.
 
 From the repo folder, run:
 
 ```sh
 echo 'COMPOSE_FILE=compose.yaml:game/compose.game.yaml' >> .env
 docker compose up -d --force-recreate proxy
+# about 30 s; still waiting after 3 min? Ctrl+C, see below
 until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done
+docker compose ps
 python3 game/office.py setup
 python3 game/office.py run --days 2
 python3 game/office.py board
@@ -129,12 +177,22 @@ python3 game/office.py board
 
 The first line tells Docker Compose to add the game's overlay file,
 `compose.game.yaml`, on top of `compose.yaml`. Your proxy now uses
-`game/config.game.yaml` and a fake model server, `fake-ollama`.
+`game/config.game.yaml` and a fake model server, `fake-ollama`. If
+the `until` line never ends, see "Is it up?" in the main README.
+
+**Success:** `docker compose ps` shows three rows, `db`, `proxy` and
+`fake-ollama`, all `Up`. `fake-ollama` has no port: only the proxy
+talks to it.
 
 `setup` mints ten game seats, one per bot, and saves their keys in
-`game/keys/`. `run` plays two 2-minute days (the first may wait up to
-2 minutes for the clock), printing a summary and both boards after
-each day. `board` prints them again.
+`game/keys/`. **Success:** ten `game-...` lines, then
+`Office ... is open.`
+
+`run` plays two 2-minute days, printing a summary and both boards
+after each day. It takes about 5 minutes: the first day may wait up
+to 2 minutes for the clock. **Success:** two `Day N done` summaries,
+each with `spend logs: N of N rows`. `board` prints the boards
+again.
 
 ### Back to normal
 
@@ -144,9 +202,11 @@ sed -i.bak '/compose.game.yaml/d' .env && rm .env.bak
 docker compose up -d --force-recreate --remove-orphans proxy
 ```
 
-`reset` revokes the game seats and wipes the game. The `sed` line
-removes the line you added to `.env`, and `--remove-orphans` stops
-`fake-ollama`. Your real seats were never touched.
+`reset` revokes the game seats and wipes the game. If it cannot
+reach the proxy, it says so and wipes nothing. The `sed` line removes
+the line you added to `.env`, and `--remove-orphans` stops
+`fake-ollama`. Your real seats keep their keys; only the practice
+prices they paid stay on their budgets.
 
 ## How a day works
 
@@ -159,7 +219,9 @@ removes the line you added to `.env`, and `--remove-orphans` stops
 4. The bot hands the quest in. The manager approves it, or sends it
    back for a redo, which costs more calls.
 5. A bot that runs out of mana gets the proxy's real refusal, HTTP
-   `422` `budget_exceeded`, and sits idle until tomorrow.
+   `422` `budget_exceeded`, and sits idle until tomorrow. LiteLLM
+   checks the budget before each call, so the call that crosses the
+   line still goes through: a seat can end a little over 1,500.
 6. 35 seconds before the day ends, the bots stop. The scorekeeper
    waits until every call is in the spend logs, then scores the day.
 
@@ -172,14 +234,26 @@ There are five personas, set in `rules.toml`:
 - **slacker**: two quests a day, and sometimes hands one in after a
   single call, hoping nobody checks.
 
+frugal, balanced and gearhead work at the same pace, so only their AI
+habits differ. spammy's quick fire is part of spamming.
+
 ## How scoring works
 
 For each quest a player hands in:
 
 ```text
 points     = value x efficiency x (1 + streak bonus)
-efficiency = par mana / mana spent on it, kept in 0.5 .. 1.5
+efficiency = par mana / mana spent on it, kept in 0.33 .. 1.5
 ```
+
+**Par mana** is what a quest should cost, done sensibly. Each quest
+size has its own value, par and `calls` in `rules.toml`. An example,
+a small quest: worth 10 points, needs 2 calls, par 12 mana.
+
+- Done for 8 mana: efficiency 12 / 8 = 1.5, so 15 points.
+- Done for 24 mana: 0.5, so 5 points.
+- Done for 40 mana: 12 / 40 = 0.3, under the floor, so 0.33 and
+  3.3 points.
 
 A quest **counts** only if:
 
@@ -188,20 +262,40 @@ A quest **counts** only if:
   tagged with that quest, paid for by that player's own key.
 
 **Streak bonus:** +10% for each day in a row before today with at
-least one counted quest, up to +50%. **Guild score:** the guild's
-points divided by its number of members.
+least one counted quest, up to +50%. Day 1 has no streak yet, so a
+5-day week tops out at +40%. **Guild score:** the guild's points
+divided by its number of members.
 
 The **naive board** ranks players by total tokens, with mana spent
 beside it. It is there only to be compared with.
+
+To see where one seat's points came from, quest by quest:
+
+```sh
+python3 game/office.py board --seat fern
+```
+
+A large quest pays a bit more per call than a small one (50 points
+for 7 calls, against 10 for 2). So a seat can rank above its twin
+with fewer quests done: it drew more large ones. `--seat` shows it.
 
 ### Why it works that way
 
 - **Value first.** Only handed-in, approved work scores. Calls on
   their own score nothing.
 - **Efficiency, kept in a range.** Cheaper work scores more, so
-  burning mana never pays. The floor of 0.5 means work done the
-  expensive way still counts half: sometimes `pro` is right. The
+  burning mana never pays. The floor of 0.33, hit at 3 times par,
+  means work done the expensive way still counts a third. The
   ceiling of 1.5 means skimping past a point earns nothing more.
+- **The daily mana cap is a brake too.** A seat that burns its mana
+  early sits idle for the rest of the day. With bigger budgets the
+  cap bites less, which is why the efficiency floor is low.
+- **`pro` is a trap here.** At 10 times the price, a `pro` quest
+  lands on the efficiency floor. Its better approval rate hardly
+  helps: rejected `local` work is redone at half the size, up to 3
+  tries, and nearly always passes in the end. With these numbers
+  `pro` would have to cost about the same as `local` to pay. That is
+  the lesson: the priciest model is no shortcut to a better score.
 - **Proof from the proxy.** The count comes from LiteLLM's own
   spend logs, not from what a player says. Handing in a quest with
   too few calls behind it is "thrown out". The seat tag must match
@@ -237,8 +331,9 @@ to be kind to them from the start.
   into a scored one without asking.
 - **Guilds first.** The board leads with guilds. For a real office,
   set `individuals = false` in `[board]`.
-- **Weekly reset.** `reset` revokes every game seat and deletes the
-  game's database. Nothing carries over to the next week.
+- **Weekly reset, by hand.** `reset` is not automatic: someone runs
+  it when the week ends. It revokes every game seat and deletes the
+  game's own database, `office.db`. No score carries over.
 - **Prompts are not stored.** `config.game.yaml` sets
   `store_prompts_in_spend_logs: false`, so LiteLLM's spend logs keep
   tags, token counts and spend, never the text. The game's own
@@ -247,8 +342,20 @@ to be kind to them from the start.
 - **Read only.** The scorekeeper reads Postgres inside a `READ ONLY`
   transaction. It cannot change a budget or a key.
 
-Keep in mind: whoever runs the proxy can see every key's spend and
-tags, game or not.
+**What stays in the proxy.** `reset` wipes the game, not the
+proxy's own records. `LiteLLM_SpendLogs` keeps a row per game call
+(seat name, tags, tokens, spend), and `LiteLLM_DailyTagSpend` keeps
+daily totals per seat tag and quest tag, with no time limit.
+Whoever runs the proxy can see them, as for every key, game or not.
+LiteLLM also keeps a record of each revoked game key (its name) and
+per-key daily totals; the retention settings below do not remove
+those.
+
+To expire them, uncomment the two `maximum_..._retention_period`
+lines in `config.game.yaml` (`"7d"`). They are off on purpose: they
+apply to **every seat**. Once a day LiteLLM then deletes all spend
+logs and tag totals older than that, your real seats' history too.
+A real mode with people should set them, and tell everyone.
 
 ## What is real, what is simulated
 
@@ -283,11 +390,12 @@ length, so LiteLLM itself refills it. Two details matter:
   Postgres says when. The game waits for that moment, then starts the
   day once every seat's `budget_reset_at` has moved on.
 
-In testing, the refill landed within a second of the boundary, and a
-key refused with `422` worked again right after. If the job is ever
-more than 60 seconds late, the game re-mints the late seats instead
-(revoke, then mint: a new key starts with full mana), says so, and
-plays a shorter day. That path was tested with the job slowed down.
+In testing, the day started within about 5 seconds of the boundary
+(the reset job runs every 5 s), and a key refused with `422` worked
+again right after. If the job is ever more than 60 seconds late, the
+game re-mints the late seats instead (revoke, then mint: a new key
+starts with full mana), says so, and plays a shorter day. That path
+was tested with the job slowed down.
 
 **Spend logs are written in batches.** The overlay sets
 `PROXY_BATCH_WRITE_AT=5` and `SPEND_LOG_QUEUE_SIZE_THRESHOLD=1`, so
@@ -297,7 +405,8 @@ hold every call the bots got an answer to (up to `flush_wait`).
 ## Files
 
 - `README.md`: this guide.
-- `office.py`: the game. `setup`, `run`, `board`, `reset`.
+- `office.py`: the game. `setup`, `run`, `board` (`--seat`,
+  `--day`), `reset`.
 - `rules.toml`: every number the game uses.
 - `compose.game.yaml`: the overlay for practice mode.
 - `config.game.yaml`: the practice models and their prices.
@@ -307,17 +416,26 @@ hold every call the bots got an answer to (up to `flush_wait`).
 
 ## Troubleshooting
 
+- **`office.py needs Python 3.11 or newer`**: see
+  [Try it](#try-it-practice-mode) for how to get one.
 - **`cannot read the proxy database`**: run the commands from the
   repo folder, with the proxy running (`docker compose ps`).
+  `office.py` runs `docker` itself, so it cannot use `sudo`. If you
+  need `sudo` for docker, add yourself to the `docker` group (main
+  README, "Troubleshooting: setting up").
+- **`reset` says `could not revoke`**: nothing was wiped. If the
+  error is `curl: (7)`, the proxy is down: `docker compose up -d`,
+  then `reset` again. If it is `401`, seats.env changed after the
+  proxy started: see "Troubleshooting: minting" in the main README.
 - **`setup` fails with `already exists`**: a game seat is still
   there from an earlier try. Run `python3 game/office.py reset`.
 - **`no key in the proxy for: ...`**: game keys were revoked or
   expired (they last 8 days). `reset`, then `setup`.
 - **The day waits before it starts**: it starts on the clock, when
   LiteLLM refills the mana. At most one day length.
-- **Every bot stops at once with `error`**: `HTTP 0` means nothing
-  answered, so the proxy is down. Any other code: practice mode may
-  be off, so `pro` does not exist. Check `.env` and
+- **Every bot stops at once with `error ...`**: `HTTP 0` means
+  nothing answered, so the proxy is down. Any other code: practice
+  mode may be off, so `pro` does not exist. Check `.env` and
   `docker compose ps`.
 - **Your real seats get filler text**: practice mode is still on.
   See [Back to normal](#back-to-normal).

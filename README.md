@@ -434,9 +434,10 @@ in `seats.env`, which the script rereads every run.
   and `w` (weeks) work too.
 - `--budget-duration 1d`: refill the budget on a schedule, so
   `--budget` becomes an allowance per day (or per `12h`, `1w`, `1mo`;
-  `s` and `m` work too). Left out, the budget is a lifetime total.
-  LiteLLM lines refills up with the clock, in UTC: `1d` refills at
-  midnight, `1h` on the hour, `1w` on Mondays, `1mo` on the 1st.
+  `s` and `m` work too, but months only as `1mo`). Left out, the
+  budget is a lifetime total. LiteLLM lines refills up with the
+  clock, in UTC: `1d` refills at midnight, `1h` on the hour, `1w` on
+  Mondays, `1mo` on the 1st.
 
 For example, a desk computer that may use both models, saved the same
 way as in Step 5:

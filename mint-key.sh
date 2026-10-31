@@ -74,8 +74,9 @@ done
 
 [[ "$budget" =~ ^[0-9]+([.][0-9]+)?$ ]] \
   || die "--budget must be a number of US dollars, like 5 or 2.50"
-# Same units LiteLLM accepts: s, m, h, d, w or mo, after a whole number.
-[[ -z "$bdur" || "$bdur" =~ ^[1-9][0-9]*(s|m|h|d|w|mo)$ ]] \
+# What LiteLLM accepts: a whole number and s, m, h, d or w; or 1mo
+# (LiteLLM refuses 2mo and up).
+[[ -z "$bdur" || "$bdur" =~ ^([1-9][0-9]*[smhdw]|1mo)$ ]] \
   || die "--budget-duration must look like 30m, 12h, 1d, 1w or 1mo"
 
 body="$(jq -nc \

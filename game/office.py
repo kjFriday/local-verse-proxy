@@ -5,11 +5,13 @@ mana, finished work is the score. See game/README.md.
   python3 game/office.py setup         mint game seats, make office.db
   python3 game/office.py run [-d N]    play N practice days with bots
   python3 game/office.py board         both leaderboards, side by side
+  python3 game/office.py board -s fern one seat, quest by quest
   python3 game/office.py reset         weekly reset: revoke and wipe
 
-Standard library only. The game never sees the master key: it mints
-with ./mint-key.sh, calls the proxy with seat keys, and reads the
-proxy's Postgres in a READ ONLY transaction through psql.
+Python 3.11 or newer, standard library only. The game never sees the
+master key: it mints with ./mint-key.sh, calls the proxy with seat
+keys, and reads the proxy's Postgres in a READ ONLY transaction
+through psql.
 """
 import argparse
 import json
@@ -18,15 +20,21 @@ import os
 import random
 import re
 import secrets
+import signal
 import sqlite3
 import subprocess
 import sys
 import threading
 import time
-import tomllib
 import urllib.error
 import urllib.request
+from collections import namedtuple
 from pathlib import Path
+
+try:
+    import tomllib  # new in Python 3.11
+except ModuleNotFoundError:
+    sys.exit("office.py needs Python 3.11 or newer (python3 --version)")
 
 GAME = Path(__file__).resolve().parent
 ROOT = GAME.parent
@@ -51,8 +59,9 @@ CREATE TABLE completions (quest TEXT PRIMARY KEY, seat TEXT, day INT,
   attempts INT, approved INT, calls INT);
 CREATE TABLE days (day INT PRIMARY KEY, tag TEXT, started REAL,
   worked REAL, expected INT, logged INT, flush_s REAL);
+-- code and kind: the proxy's last refusal (kind: error.type).
 CREATE TABLE daylog (day INT, seat TEXT, ok INT, refused INT,
-  code INT, out_at REAL, PRIMARY KEY (day, seat));
+  code INT, kind TEXT, out_at REAL, PRIMARY KEY (day, seat));
 -- Filled from LiteLLM_SpendLogs at day end.
 CREATE TABLE usage (day INT, seat TEXT, calls INT, tokens INT,
   mana REAL, PRIMARY KEY (day, seat));
@@ -60,6 +69,9 @@ CREATE TABLE scores (day INT, quest TEXT PRIMARY KEY, seat TEXT,
   calls INT, mana REAL, eff REAL, bonus REAL, points REAL,
   verdict TEXT);
 """
+
+# One handed-in (or unfinished) quest, as the scorekeeper sees it.
+Result = namedtuple("Result", "quest seat calls mana eff verdict value")
 
 
 def die(msg):
@@ -186,10 +198,19 @@ def mint(alias, rules):
 
 
 def revoke(alias):
+    """Revoke one seat: "revoked", "no key", or why it failed. The key
+    file goes only once the proxy has no key for the seat."""
     p = subprocess.run([str(MINT), "--revoke-seat", alias],
                        capture_output=True, text=True, cwd=ROOT)
+    err = " ".join(p.stderr.split())
+    if p.returncode == 0:
+        result = "revoked"
+    elif "No keys found" in err:  # LiteLLM's 404 for an unknown seat
+        result = "no key"
+    else:
+        return err or f"mint-key.sh exit {p.returncode}"
     (KEYS / f"{alias}.key").unlink(missing_ok=True)
-    return p.returncode == 0
+    return result
 
 
 def chat(url, key, body):
@@ -272,33 +293,35 @@ def post_quests(office, day):
 class Bot(threading.Thread):
     def __init__(self, office, player, day, tag, deadline, url):
         super().__init__(daemon=True)
-        self.o, self.p, self.day, self.tag = office, player, day, tag
+        self.office, self.day, self.tag = office, day, tag
         self.deadline, self.url = deadline, url
         self.seat = player["seat"]
-        self.ps = office.rules["personas"][player["persona"]]
+        self.persona = office.rules["personas"][player["persona"]]
         self.rng = random.Random(
             f"{office.rules['sim']['seed']}-{day}-{player['name']}")
         self.key = (KEYS / f"{self.seat}.key").read_text().strip()
         self.ok = self.refused = self.code = 0
+        self.kind = ""
         self.out_at = None
         self.stopped = False
 
     def run(self):
         try:
             done = 0
-            while done < self.ps["quests"] and not self.stopped:
-                q = self.o.claim(self.seat, self.day, self.rng)
+            while done < self.persona["quests"] and not self.stopped:
+                q = self.office.claim(self.seat, self.day, self.rng)
                 if q is None:
                     break  # no quests left today
                 self.work(q)
                 done += 1
         finally:
-            self.o.q("INSERT OR REPLACE INTO daylog VALUES (?,?,?,?,?,?)",
-                     self.day, self.seat, self.ok, self.refused,
-                     self.code, self.out_at)
+            self.office.q(
+                "INSERT OR REPLACE INTO daylog VALUES (?,?,?,?,?,?,?)",
+                self.day, self.seat, self.ok, self.refused, self.code,
+                self.kind, self.out_at)
 
     def work(self, q):
-        ps, rng, rules = self.ps, self.rng, self.o.rules
+        ps, rng, rules = self.persona, self.rng, self.office.rules
         model = "pro" if rng.random() < ps["pro"] else "local"
         steps, per_step, retry = q["calls"], ps["per_step"], ps["retry"]
         if rng.random() < ps["bluff"]:
@@ -313,8 +336,8 @@ class Bot(threading.Thread):
                 n = per_step + (rng.random() < retry)
                 for _ in range(n):
                     if not self.call(q, model, step):
-                        self.o.q("UPDATE quests SET state = 'unfinished' "
-                                 "WHERE id = ?", q["id"])
+                        self.office.q("UPDATE quests SET state = "
+                                      "'unfinished' WHERE id = ?", q["id"])
                         return
                     calls += 1
             approved = rng.random() < min(0.98, chance)
@@ -322,28 +345,31 @@ class Bot(threading.Thread):
                 break
             steps = math.ceil(q["calls"] * rules["quests"]["redo_share"])
             per_step, retry = ps["per_step"], ps["retry"]
-        self.o.q("UPDATE quests SET state = 'done' WHERE id = ?", q["id"])
-        self.o.q("INSERT INTO completions VALUES (?,?,?,?,?,?)", q["id"],
-                 self.seat, self.day, attempts, int(approved), calls)
+        self.office.q("UPDATE quests SET state = 'done' WHERE id = ?",
+                      q["id"])
+        self.office.q("INSERT INTO completions VALUES (?,?,?,?,?,?)",
+                      q["id"], self.seat, self.day, attempts,
+                      int(approved), calls)
 
     def call(self, q, model, step):
-        pause = self.rng.uniform(*self.ps["pause"])
+        ps = self.persona
+        pause = self.rng.uniform(*ps["pause"])
         if self.stopped or time.time() + pause >= self.deadline:
             self.stopped = True
             return False
         time.sleep(pause)
-        size = self.rng.randint(*self.ps["chars"])
+        size = self.rng.randint(*ps["chars"])
         text = f"Quest {q['id']}, step {step + 1}: "
         while len(text) < size:
             text += self.rng.choice(WORDS) + " "
-        body = {"model": model, "max_tokens": self.ps["reply"],
+        body = {"model": model, "max_tokens": ps["reply"],
                 "messages": [{"role": "user", "content": text}],
                 # Tags reach LiteLLM_SpendLogs.request_tags.
-                "metadata": {"tags": [f"lvg:{self.o.id}",
+                "metadata": {"tags": [f"lvg:{self.office.id}",
                                       f"day:{self.tag}",
                                       f"seat:{self.seat}",
                                       f"quest:{q['id']}"]}}
-        if self.ps["stream"]:
+        if ps["stream"]:
             body["stream"] = True
             body["stream_options"] = {"include_usage": True}
         for tries in range(3):
@@ -352,10 +378,10 @@ class Bot(threading.Thread):
                 self.ok += 1
                 return True
             if status == 422 or kind == "budget_exceeded":
-                break  # out of mana: the proxy said no
+                break  # the proxy said no; asking again will not help
             time.sleep(1 + tries)
         self.refused += 1
-        self.code = status
+        self.code, self.kind = status, kind
         self.out_at = time.time()
         self.stopped = True  # idle for the rest of the day
         return False
@@ -400,7 +426,9 @@ def wait_for_day(office, players, day):
             print(f"  reset job late; re-minting {len(late)} seats",
                   flush=True)
             for s in late:
-                revoke(s)
+                gone = revoke(s)
+                if gone not in ("revoked", "no key"):
+                    die(f"revoke {s} failed: {gone}")
                 err = mint(s, office.rules)
                 if err:
                     die(f"re-mint {s} failed: {err}")
@@ -429,13 +457,8 @@ def play_day(office, day, url):
     bots = [Bot(office, p, day, tag, deadline, url) for p in players]
     for b in bots:
         b.start()
-    try:
-        for b in bots:
-            b.join(max(1, deadline + 70 - time.time()))
-    except KeyboardInterrupt:
-        for b in bots:
-            b.stopped = True
-        die("\nstopped; this day is not scored. `run` plays it again.")
+    for b in bots:  # Ctrl+C here: main() says the day is not scored
+        b.join(max(1, deadline + 70 - time.time()))
     worked = time.time() - started
     office.q("UPDATE quests SET state = 'expired' "
              "WHERE day = ? AND state = 'open'", day)
@@ -482,19 +505,20 @@ def score_day(office, day):
     players = {p["seat"]: p for p in office.players()}
     work, used = {}, {}
     for r in rows:
-        alias = r["alias"]
-        if alias not in players:
+        seat, mana = r["alias"], r["spend"] / usd
+        if seat not in players:
             continue
-        u = used.setdefault(alias, [0, 0, 0.0])
-        u[0] += r["calls"]
-        u[1] += r["tokens"]
-        u[2] += r["spend"] / usd
+        u = used.setdefault(seat, {"calls": 0, "tokens": 0, "mana": 0.0})
+        u["calls"] += r["calls"]
+        u["tokens"] += r["tokens"]
+        u["mana"] += mana
         # Work counts only if the key that paid is the seat it claims.
-        if r["seat"] == f"seat:{alias}" and r["quest"]:
-            work[(alias, r["quest"][6:])] = (r["calls"], r["spend"] / usd)
-    for seat, (calls, tokens, mana) in used.items():
+        if r["seat"] == f"seat:{seat}" and r["quest"]:
+            work[(seat, r["quest"].removeprefix("quest:"))] = (
+                r["calls"], mana)
+    for seat, u in used.items():
         office.q("INSERT INTO usage VALUES (?,?,?,?,?)", day, seat,
-                 calls, tokens, mana)
+                 u["calls"], u["tokens"], u["mana"])
     quests = {q["id"]: q for q in office.q(
         "SELECT * FROM quests WHERE day = ?", day)}
     results = []
@@ -509,23 +533,22 @@ def score_day(office, day):
             verdict = "counted"
         eff = sc["eff_max"] if mana <= 0 else q["par_mana"] / mana
         eff = max(sc["eff_min"], min(sc["eff_max"], eff))
-        results.append([c["quest"], c["seat"], calls, mana, eff,
-                        verdict, q["value"]])
+        results.append(Result(c["quest"], c["seat"], calls, mana, eff,
+                              verdict, q["value"]))
     for q in quests.values():
         if q["state"] == "unfinished":
             calls, mana = work.get((q["seat"], q["id"]), (0, 0.0))
-            results.append([q["id"], q["seat"], calls, mana, 0.0,
-                            "unfinished", 0])
-    counted = {r[1] for r in results if r[5] == "counted"}
-    for qid, seat, calls, mana, eff, verdict, value in results:
-        bonus = 0.0
-        if verdict == "counted":
+            results.append(Result(q["id"], q["seat"], calls, mana, 0.0,
+                                  "unfinished", 0))
+    for r in results:
+        bonus = points = 0.0
+        if r.verdict == "counted":
             bonus = min(sc["streak_cap"],
-                        sc["streak_step"] * streak(office, seat, day))
-        points = value * eff * (1 + bonus) if verdict == "counted" else 0
+                        sc["streak_step"] * streak(office, r.seat, day))
+            points = r.value * r.eff * (1 + bonus)
         office.q("INSERT INTO scores VALUES (?,?,?,?,?,?,?,?,?)", day,
-                 qid, seat, calls, mana, eff, bonus, points, verdict)
-    return counted
+                 r.quest, r.seat, r.calls, r.mana, r.eff, bonus, points,
+                 r.verdict)
 
 
 def streak(office, seat, day):
@@ -561,7 +584,10 @@ def day_summary(office, day):
                     "ORDER BY out_at", day)
     for o in outs:
         at = o["out_at"] - d["started"]
-        why = "out of mana" if o["code"] == 422 else "error"
+        if o["kind"] == "budget_exceeded":
+            why = "out of mana"
+        else:
+            why = f"error {o['kind']}" if o["kind"] else "error"
         print(f"  {o['name']}: {why} at {at // 60:.0f}:{at % 60:02.0f} "
               f"into the day (HTTP {o['code']}), idle after that")
     print()
@@ -579,93 +605,150 @@ def rank_corr(a, b):
     return 1 - 6 * d2 / (n * (n * n - 1))
 
 
-def board(office, day=None):
-    rules = office.rules
+def scored_days(office, day):
+    """The days a board covers: one day, or every scored day."""
     last = int(office.meta("day") or 0)
     if not last:
         print("No day played yet: run `python3 game/office.py run`.")
-        return
-    if day and not 1 <= day <= last:
+        return None, last
+    if day is not None and not 1 <= day <= last:
         die(f"no day {day} yet: days 1 to {last} are scored.")
-    days = [day] if day else list(range(1, last + 1))
-    marks = ",".join("?" * len(days))
-    players = office.players()
-    pts = {p["seat"]: [0.0, 0, 0.0] for p in players}  # points, n, eff
-    for r in office.q(f"SELECT * FROM scores WHERE day IN ({marks}) "
-                      "AND verdict = 'counted'", *days):
-        pts[r["seat"]][0] += r["points"]
-        pts[r["seat"]][1] += 1
-        pts[r["seat"]][2] += r["eff"]
-    use = {p["seat"]: [0, 0.0] for p in players}
-    for r in office.q(f"SELECT * FROM usage WHERE day IN ({marks})",
-                      *days):
-        use[r["seat"]][0] += r["tokens"]
-        use[r["seat"]][1] += r["mana"]
-    info = {p["seat"]: p for p in players}
-    when = f"day {day}" if day else f"after day {last}"
+    return ([day] if day is not None else list(range(1, last + 1))), last
+
+
+def heading(office, day, last):
+    rules = office.rules
+    when = f"day {day}" if day is not None else f"after day {last}"
     print(f"Office {office.id}, practice week: {when} of "
           f"{rules['day']['per_week']} ({rules['day']['length']} days)")
     print(f"1 mana = ${money(rules['mana']['usd'])}; daily mana "
           f"{rules['mana']['daily']:,} per seat")
     print()
+
+
+def board(office, day=None):
+    rules = office.rules
+    days, last = scored_days(office, day)
+    if not days:
+        return
+    marks = ",".join("?" * len(days))
+    players = office.players()
+    pts = {p["seat"]: {"points": 0.0, "done": 0, "eff": 0.0}
+           for p in players}
+    for r in office.q(f"SELECT * FROM scores WHERE day IN ({marks}) "
+                      "AND verdict = 'counted'", *days):
+        pts[r["seat"]]["points"] += r["points"]
+        pts[r["seat"]]["done"] += 1
+        pts[r["seat"]]["eff"] += r["eff"]
+    use = {p["seat"]: {"tokens": 0, "mana": 0.0} for p in players}
+    for r in office.q(f"SELECT * FROM usage WHERE day IN ({marks})",
+                      *days):
+        use[r["seat"]]["tokens"] += r["tokens"]
+        use[r["seat"]]["mana"] += r["mana"]
+    info = {p["seat"]: p for p in players}
+    heading(office, day, last)
     guilds = {}
-    for p in players:
-        g = guilds.setdefault(p["guild"], [0.0, 0])
-        g[0] += pts[p["seat"]][0]
-        g[1] += 1
-    top = max([g[0] / g[1] for g in guilds.values()] + [1])
+    for g in office.q("SELECT name FROM guilds ORDER BY name"):
+        members = [p["seat"] for p in players if p["guild"] == g["name"]]
+        if members:
+            guilds[g["name"]] = (
+                sum(pts[s]["points"] for s in members) / len(members),
+                len(members))
+    top = max([avg for avg, _ in guilds.values()] + [1])
     print("GUILDS: points per member (finished, efficient work)")
-    for name, (total, size) in sorted(
-            guilds.items(), key=lambda x: -x[1][0] / x[1][1]):
-        avg = total / size
+    for name, (avg, size) in sorted(guilds.items(),
+                                    key=lambda x: -x[1][0]):
         bar = "#" * round(30 * avg / top)
         print(f"  {name:<8} {size} members {avg:>7.1f}  {bar}")
     print()
-    by_pts = sorted(pts, key=lambda s: (-pts[s][0], -pts[s][1], s))
-    by_tok = sorted(use, key=lambda s: (-use[s][0], s))
-    by_usd = sorted(use, key=lambda s: (-use[s][1], s))
+    by_pts = sorted(pts, key=lambda s: (-pts[s]["points"],
+                                        -pts[s]["done"], s))
+    by_tok = sorted(use, key=lambda s: (-use[s]["tokens"], s))
+    by_mana = sorted(use, key=lambda s: (-use[s]["mana"], s))
     if not rules["board"]["individuals"]:
         print("(Individual boards are off in rules.toml.)")
         return
     left = ["WHO FINISHED WORK (game score)",
             " # seat   persona  done  eff    pts"]
     for i, s in enumerate(by_pts, 1):
-        n = pts[s][1]
-        eff = pts[s][2] / n if n else 0.0
+        n = pts[s]["done"]
+        eff = pts[s]["eff"] / n if n else 0.0
         left.append(f"{i:>2} {info[s]['name']:<6} "
                     f"{info[s]['persona']:<8} {n:>4} {eff:>4.2f} "
-                    f"{pts[s][0]:>6.1f}")
+                    f"{pts[s]['points']:>6.1f}")
     right = ["WHO BURNED TOKENS (naive board)",
              " # seat      tokens   mana  done"]
     for i, s in enumerate(by_tok, 1):
-        right.append(f"{i:>2} {info[s]['name']:<6} {use[s][0]:>9,} "
-                     f"{use[s][1]:>6,.0f} {pts[s][1]:>4}")
+        right.append(f"{i:>2} {info[s]['name']:<6} "
+                     f"{use[s]['tokens']:>9,} {use[s]['mana']:>6,.0f} "
+                     f"{pts[s]['done']:>4}")
     for a, b in zip(left, right):
         print(f"{a:<36}| {b}")
     print()
     t, w = by_tok[0], by_pts[0]
     print("GOODHART CHECK")
     for label, s, what in (
-            ("Token board #1:", t, f"{use[t][0]:,} tokens"),
-            ("Spend board #1:", by_usd[0], f"{use[by_usd[0]][1]:,.0f} mana"),
-            ("Score board #1:", w, f"{use[w][0]:,} tokens")):
-        print(f"  {label} {info[s]['name']} ({info[s]['persona']}), "
-              f"{what}, {pts[s][1]} done, {pts[s][0]:.0f} pts")
-    if t != w and use[w][0] and pts[w][1]:
-        print(f"  {info[t]['name']} burned {use[t][0] / use[w][0]:.1f}x "
-              f"the tokens of {info[w]['name']}, for "
-              f"{pts[t][1] / pts[w][1]:.2f}x the finished quests")
-        print(f"  and {pts[t][0] / pts[w][0]:.2f}x the points.")
+            ("Most tokens:", t, f"{use[t]['tokens']:,} tokens"),
+            ("Most mana:", by_mana[0],
+             f"{use[by_mana[0]]['mana']:,.0f} mana"),
+            ("Top score:", w, f"{use[w]['tokens']:,} tokens")):
+        print(f"  {label:<12} {info[s]['name']} ({info[s]['persona']}), "
+              f"{what}, {pts[s]['done']} done, "
+              f"{pts[s]['points']:.0f} pts")
+    if t != w and use[w]["tokens"] and pts[w]["done"]:
+        print(f"  {info[t]['name']} burned "
+              f"{use[t]['tokens'] / use[w]['tokens']:.1f}x the tokens of "
+              f"{info[w]['name']}, for "
+              f"{pts[t]['done'] / pts[w]['done']:.2f}x the finished quests")
+        print(f"  and {pts[t]['points'] / pts[w]['points']:.2f}x the "
+              "points.")
     rho = rank_corr(by_tok, by_pts)
     print(f"  Rank match, tokens vs score: {rho:+.2f} "
           "(+1 same order, 0 none, -1 reversed)")
+
+
+def seat_board(office, name, day=None):
+    """One seat, quest by quest, so every point can be checked."""
+    days, last = scored_days(office, day)
+    if not days:
+        return
+    p = office.q("SELECT * FROM players WHERE name = ? OR seat = ?",
+                 name, name)
+    if not p:
+        die(f"no seat {name!r}: see `office.py board` for the names.")
+    p = p[0]
+    marks = ",".join("?" * len(days))
+    rows = office.q(
+        "SELECT s.*, q.size, q.value, q.par_mana, q.calls AS need "
+        "FROM scores s JOIN quests q ON q.id = s.quest "
+        f"WHERE s.seat = ? AND s.day IN ({marks}) "
+        "ORDER BY s.day, s.quest", p["seat"], *days)
+    heading(office, day, last)
+    print(f"{p['name']} ({p['persona']}, guild {p['guild']}): "
+          "points = value x eff x (1 + bonus)")
+    print(" day quest  size   calls par   mana  eff bonus value    pts "
+          "verdict")
+    for r in rows:
+        print(f"{r['day']:>4} {r['quest']:<6} "
+              f"{r['size']:<6} {r['calls']:>2}/{r['need']:<2} "
+              f"{r['par_mana']:>3.0f} {r['mana']:>6.1f} {r['eff']:>4.2f} "
+              f"{r['bonus']:>+5.0%} {r['value']:>5.0f} "
+              f"{r['points']:>6.1f} {r['verdict']}")
+    ok = [r for r in rows if r["verdict"] == "counted"]
+    print(f"Counted {len(ok)} of {len(rows)}: value "
+          f"{sum(r['value'] for r in ok):,.0f}, mana "
+          f"{sum(r['mana'] for r in ok):,.1f} (par "
+          f"{sum(r['par_mana'] for r in ok):,.0f}), points "
+          f"{sum(r['points'] for r in ok):,.1f}.")
+    print("calls: tagged calls in the spend logs / the fewest the quest "
+          "needs.")
 
 
 # --- Commands --------------------------------------------------------
 
 def cmd_setup(rules, args):
     if DB.exists():
-        die("the office is already set up. For a new week run "
+        die("the office is already set up. For a new week, run\n"
             "`python3 game/office.py reset` first.")
     prefix = rules["office"]["seat_prefix"]
     usd = rules["mana"]["daily"] * rules["mana"]["usd"]
@@ -705,8 +788,8 @@ def cmd_run(rules, args):
     for _ in range(args.days):
         day = int(office.meta("day")) + 1
         if day > per_week:
-            print(f"The week is over ({per_week} days). Start a new one "
-                  "with `office.py reset`, then `office.py setup`.")
+            print(f"The week is over ({per_week} days). Start a new "
+                  "one with\n`office.py reset`, then `office.py setup`.")
             return
         play_day(office, day, url)
         day_summary(office, day)
@@ -716,7 +799,10 @@ def cmd_run(rules, args):
 
 
 def cmd_board(rules, args):
-    board(Office(rules), args.day)
+    if args.seat:
+        seat_board(Office(rules), args.seat, args.day)
+    else:
+        board(Office(rules), args.day)
 
 
 def cmd_reset(rules, args):
@@ -727,13 +813,39 @@ def cmd_reset(rules, args):
         seats = sorted(set(seats) | {r[0] for r in db.execute(
             "SELECT seat FROM players")})
         db.close()
-    gone = [s for s in seats if revoke(s)]
-    print(f"Revoked {len(gone)} game seats"
-          + (f"; {len(seats) - len(gone)} had no key." if
-             len(gone) < len(seats) else "."))
+    done = {s: revoke(s) for s in seats}
+    failed = {s: why for s, why in done.items()
+              if why not in ("revoked", "no key")}
+    if failed:
+        seat, why = next(iter(failed.items()))
+        die(f"could not revoke {len(failed)} of {len(seats)} game "
+            f"seats. {seat}:\n  {why}\nThe game was not wiped. Is the "
+            "proxy up, with this seats.env? (docker compose ps)\n"
+            "Then run reset again.")
+    n = sum(why == "revoked" for why in done.values())
+    print(f"Revoked {n} game seat{'' if n == 1 else 's'}"
+          + (f"; {len(seats) - n} had no key." if n < len(seats) else "."))
     for p in GAME.glob("office.db*"):
         p.unlink()
     print("Game state wiped. New week: python3 game/office.py setup")
+
+
+def positive(text):
+    try:
+        n = int(text)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"{text!r}: use 1 or more")
+    return n
+
+
+# What Ctrl+C means, per command.
+STOPPED = {
+    "setup": "stopped. Clean up with `python3 game/office.py reset`.",
+    "run": "stopped; this day is not scored. `run` plays it again.",
+    "reset": "stopped. Run `python3 game/office.py reset` again.",
+}
 
 
 def main():
@@ -744,16 +856,24 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup", help="mint game seats, create office.db")
     r = sub.add_parser("run", help="play practice days with bots")
-    r.add_argument("-d", "--days", type=int, default=1)
+    r.add_argument("-d", "--days", type=positive, default=1,
+                   help="days to play (default 1)")
     r.add_argument("-q", "--quiet", action="store_true",
                    help="day summaries only, no board")
     b = sub.add_parser("board", help="show both leaderboards")
-    b.add_argument("--day", type=int, help="one day only")
+    b.add_argument("-d", "--day", type=positive, help="one day only")
+    b.add_argument("-s", "--seat", metavar="NAME",
+                   help="one seat, quest by quest (e.g. fern)")
     sub.add_parser("reset", help="weekly reset: revoke seats, wipe")
     args = ap.parse_args()
+    if hasattr(signal, "SIGPIPE"):  # `board | head` ends quietly
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     rules = load_rules(args.rules)
-    {"setup": cmd_setup, "run": cmd_run, "board": cmd_board,
-     "reset": cmd_reset}[args.cmd](rules, args)
+    try:
+        {"setup": cmd_setup, "run": cmd_run, "board": cmd_board,
+         "reset": cmd_reset}[args.cmd](rules, args)
+    except KeyboardInterrupt:
+        die("\n" + STOPPED.get(args.cmd, "stopped."))
 
 
 if __name__ == "__main__":

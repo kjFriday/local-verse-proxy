@@ -29,6 +29,14 @@ general_settings:
   # default; it is spelled out because the game promises it. The game
   # reads only tags, token counts and spend.
   store_prompts_in_spend_logs: false
+  # The spend logs still keep each call's seat, tags, tokens and
+  # spend, with no time limit; `office.py reset` does not touch them.
+  # To drop old rows, uncomment these two lines. Careful: they apply
+  # to EVERY seat, not only the game. Once a day LiteLLM deletes all
+  # spend logs and per-tag daily totals older than this, real seats'
+  # history too. See game/README.md, "Privacy and consent".
+  # maximum_spend_logs_retention_period: "7d"
+  # maximum_daily_tag_spend_retention_period: "7d"
 
 litellm_settings:
   drop_params: true

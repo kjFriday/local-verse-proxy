@@ -23,7 +23,8 @@ usd = 0.00001  # 1 mana = this many US dollars of model spend
 daily = 1500   # mana per seat per day: the key's max_budget
 
 [quests]
-per_seat = 8      # quests posted per seat per day
+per_seat = 10     # quests posted per seat per day (enough that the
+                  # fastest bots never run out)
 redo_share = 0.5  # a rejected quest needs this share of its calls again
 max_attempts = 3  # rejected this many times: given up
 
@@ -49,10 +50,11 @@ calls = 7
 par_mana = 45
 
 [score]
-eff_min = 0.5       # efficiency = par_mana / mana used, kept in
-eff_max = 1.5       # this range
+eff_min = 0.33      # efficiency = par_mana / mana used, kept in
+eff_max = 1.5       # this range (the floor is hit at 3x par)
 streak_step = 0.10  # +10% for each day in a row with an approved quest
-streak_cap = 0.50   # up to +50%
+streak_cap = 0.50   # up to +50%. Only days before today count, so a
+                    # 5-day week tops out at +40%
 flush_wait = "60s"  # most time to wait for spend logs at day end
 
 [board]
@@ -69,7 +71,8 @@ pro_boost = 0.15  # extra approval chance for work done on pro
 #   per_step calls per step of work
 #   retry    chance to resend a step anyway
 #   skill    chance the manager approves the work
-#   pause    seconds between calls
+#   pause    seconds between calls. frugal, balanced and gearhead
+#            share one pace, so only their AI habits differ
 #   quests   most quests per day
 #   bluff    chance to hand a quest in after one call
 #   stream   ask for streamed replies
@@ -81,7 +84,7 @@ reply = 80
 per_step = 1
 retry = 0.0
 skill = 0.80
-pause = [0.8, 2.0]
+pause = [1.0, 2.0]
 quests = 99
 bluff = 0.0
 stream = false
@@ -93,7 +96,7 @@ reply = 160
 per_step = 1
 retry = 0.05
 skill = 0.80
-pause = [1.0, 2.5]
+pause = [1.0, 2.0]
 quests = 99
 bluff = 0.0
 stream = true
