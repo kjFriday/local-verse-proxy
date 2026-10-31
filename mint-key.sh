@@ -71,6 +71,9 @@ done
 
 [[ "$budget" =~ ^[0-9]+([.][0-9]+)?$ ]] \
   || die "--budget must be a number of US dollars, like 5 or 2.50"
+# LiteLLM units; note "m" is minutes and "mo" is months.
+[[ "$duration" =~ ^[0-9]+(s|m|h|d|w|mo)$ ]] \
+  || die "--duration must be a number and a unit, like 30d, 12h or 2w"
 
 body="$(jq -nc \
   --arg seat "$seat" --arg models "$models" \

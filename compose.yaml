@@ -3,6 +3,9 @@
 # Pinned LiteLLM version. To change it, set LITELLM_TAG in your shell
 # or in .env (not seats.env).
 
+# Fixed name, so the pgdata volume survives renaming the folder.
+name: local-verse-proxy
+
 services:
   proxy:
     image: ghcr.io/berriai/litellm:${LITELLM_TAG:-v1.106.6}
