@@ -203,7 +203,10 @@ func write(t *testing.T, path, text string) {
 func checkWidth(t *testing.T, out string) {
 	t.Helper()
 	for _, l := range strings.Split(out, "\n") {
-		if len(l) > 80 {
+		// A word longer than a line (a long path, as macOS's temp
+		// folders are) cannot fold; it stands alone on its line.
+		word := !strings.Contains(strings.TrimSpace(l), " ")
+		if len(l) > 80 && !word {
 			t.Errorf("line over 80: %q", l)
 		}
 		for _, r := range l {

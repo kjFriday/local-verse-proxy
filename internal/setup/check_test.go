@@ -45,7 +45,11 @@ func TestCheckAllGood(t *testing.T) {
 		"ok    Ollama answers at " + ol.URL + ".",
 		"Everything checks out.",
 	} {
-		if !strings.Contains(o, want+"\n") {
+		// Spaces flattened: a long folder name folds onto its own
+		// line (Windows' and macOS's temp folders do).
+		flat := strings.Join(strings.Fields(o), " ") + " "
+		if !strings.Contains(flat, strings.Join(strings.Fields(want),
+			" ")+" ") {
 			t.Errorf("missing %q in:\n%s", want, o)
 		}
 	}
