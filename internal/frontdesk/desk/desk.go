@@ -348,10 +348,12 @@ func (d *Desk) startTally(ctx context.Context) chan tallyResult {
 	d.mu.Unlock()
 	go func() {
 		t, err := d.tallyQuery(ctx)
-		out <- tallyResult{t, err}
+		// Not busy before the answer goes: a check that comes
+		// straight after must be free to start the next one.
 		d.mu.Lock()
 		d.tallyBusy = false
 		d.mu.Unlock()
+		out <- tallyResult{t, err}
 	}()
 	return out
 }

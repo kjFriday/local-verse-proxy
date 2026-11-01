@@ -227,7 +227,24 @@ func freePort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
+// start runs one side. freePort's port can be taken by someone else
+// before the desk binds it; then the desk says "cannot use port" and
+// stops, and start tries again on another port, up to three times.
 func start(t *testing.T, name string, m mode) *side {
+	t.Helper()
+	for try := 1; ; try++ {
+		s := startOnce(t, name, m)
+		if s != nil {
+			return s
+		}
+		if try == 3 {
+			t.Fatalf("%s: three ports were taken", name)
+		}
+	}
+}
+
+// startOnce is start on one port; nil means the port was taken.
+func startOnce(t *testing.T, name string, m mode) *side {
 	t.Helper()
 	fake := fakelitellm.Start(fakelitellm.Options{MasterKey: master,
 		Models: []string{"local", "claude"},
@@ -290,6 +307,10 @@ func start(t *testing.T, name string, m mode) *side {
 			// The first check of the proxy, so cards are there.
 			time.Sleep(1500 * time.Millisecond)
 			return s
+		}
+		if strings.Contains(s.errb.String(), "cannot use port") {
+			stop(s)
+			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
