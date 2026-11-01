@@ -65,6 +65,10 @@ type Server struct {
 	addr string
 	srv  *http.Server
 
+	// conns are the open connections, so Down can drop them.
+	connMu sync.Mutex
+	conns  map[net.Conn]bool
+
 	mu    sync.Mutex
 	ln    net.Listener
 	keys  []*Key // newest last
@@ -123,9 +127,23 @@ func Start(o Options) *Server {
 	s := &Server{o: o, ln: ln, addr: ln.Addr().String(),
 		fails: map[string]failure{}, delay: map[string]time.Duration{}}
 	s.URL = "http://" + s.addr
-	s.srv = &http.Server{Handler: http.HandlerFunc(s.serve)}
+	s.conns = map[net.Conn]bool{}
+	s.srv = &http.Server{Handler: http.HandlerFunc(s.serve),
+		ConnState: s.track}
 	go s.srv.Serve(ln)
 	return s
+}
+
+// track keeps s.conns up to date.
+func (s *Server) track(c net.Conn, st http.ConnState) {
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+	switch st {
+	case http.StateNew:
+		s.conns[c] = true
+	case http.StateHijacked, http.StateClosed:
+		delete(s.conns, c)
+	}
 }
 
 // Close stops the fake.
@@ -148,8 +166,14 @@ func (s *Server) Down(on bool) {
 			s.ln.Close()
 			s.ln = nil
 		}
-		s.srv.SetKeepAlivesEnabled(false)
-		s.srv.SetKeepAlivesEnabled(true)
+		// A client's idle keep-alive connection would still be
+		// answered: drop every open one, as a stopped proxy does.
+		s.connMu.Lock()
+		for c := range s.conns {
+			c.Close()
+			delete(s.conns, c)
+		}
+		s.connMu.Unlock()
 		return
 	}
 	if s.ln != nil {
@@ -715,7 +739,9 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request,
 	if in.MaxTokens > 0 && in.MaxTokens < completion {
 		completion = in.MaxTokens
 	}
-	spend := float64(prompt+completion) * s.o.CostPerToken
+	// float64(...) rounds here, so arm64 cannot fuse it with the add
+	// below (Go spec, "Floating-point operators").
+	spend := float64(float64(prompt+completion) * s.o.CostPerToken)
 	now := s.o.Now()
 	if k.Token != "" {
 		k.Spend += spend

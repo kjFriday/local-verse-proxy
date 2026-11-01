@@ -114,10 +114,14 @@ func (r *Rand) uint32() uint32 {
 	return y
 }
 
-// Random is random(): 53 random bits in [0, 1).
+// Random is random(): 53 random bits in [0, 1). Each float64(...)
+// below rounds a product on its own, as C does, so that arm64 and
+// others cannot fuse it with the add into one multiply-add, which
+// rounds once and can differ from Python in the last bit (Go spec,
+// "Floating-point operators").
 func (r *Rand) Random() float64 {
 	a, b := r.uint32()>>5, r.uint32()>>6
-	return (float64(a)*67108864.0 + float64(b)) *
+	return (float64(float64(a)*67108864.0) + float64(b)) *
 		(1.0 / 9007199254740992.0)
 }
 
@@ -159,7 +163,7 @@ func (r *Rand) RandInt(a, b int) int {
 
 // Uniform is uniform(a, b): a + (b-a) * random().
 func (r *Rand) Uniform(a, b float64) float64 {
-	return a + (b-a)*r.Random()
+	return a + float64((b-a)*r.Random())
 }
 
 // Choice is choice(seq) as an index into a sequence of n items.
