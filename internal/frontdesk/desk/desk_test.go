@@ -83,7 +83,7 @@ type rig struct {
 	path string
 }
 
-func newRig(t *testing.T, proxyURL string) *rig {
+func newRig(t testing.TB, proxyURL string) *rig {
 	t.Helper()
 	r := &rig{log: &lines{}, q: &querier{
 		today: `{"day": "2026-10-31", "rows": [{"k": "seat", ` +
@@ -421,4 +421,48 @@ func listenGarbage() (net.Listener, error) {
 		}
 	}()
 	return l, nil
+}
+
+func cardState(t *testing.T, o pyjson.Obj, seat string) string {
+	t.Helper()
+	for _, c := range o.Val("cards").([]any) {
+		if c := c.(pyjson.Obj); c.Val("seat") == seat {
+			return c.Val("state").(string)
+		}
+	}
+	t.Fatalf("no card %q", seat)
+	return ""
+}
+
+// A check that changes nothing keeps the answer and its version; a
+// card whose time runs out still turns expired on time, with nothing
+// else changed, and back if the clock is set back.
+func TestSameAnswer(t *testing.T) {
+	r := newRig(t, "")
+	// Ends between the checks at 2 and 4 s, before any new tally (5
+	// s) or card list (10 s).
+	ends := time.Unix(int64(r.clk.Wall())+3, 0).UTC()
+	r.fake.AddKey(fakelitellm.Key{Alias: "sam",
+		Expires: ends.Format("2006-01-02T15:04:05.000000Z")})
+	o := r.check(t)
+	v0, _ := r.d.Wait(context.Background(), -1)
+	if s := cardState(t, o, "sam"); s != "ok" {
+		t.Fatalf("state %q", s)
+	}
+	r.clk.Advance(Fast)
+	o = r.check(t)
+	if v, _ := r.d.Wait(context.Background(), -1); v != v0 ||
+		cardState(t, o, "sam") != "ok" {
+		t.Fatalf("version %d, was %d: %s", v, v0, pyjson.Compact(o))
+	}
+	r.clk.Advance(Fast)
+	o = r.check(t)
+	if v, _ := r.d.Wait(context.Background(), -1); v == v0 ||
+		cardState(t, o, "sam") != "expired" {
+		t.Fatalf("not expired: version %d: %s", v, pyjson.Compact(o))
+	}
+	r.clk.SetWall(r.clk.Wall() - 60)
+	if s := cardState(t, r.check(t), "sam"); s != "ok" {
+		t.Fatalf("clock set back: %q", s)
+	}
 }

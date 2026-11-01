@@ -15,6 +15,9 @@
 // in LiteLLM first, once (E2E_SEED=1). TestStartup needs E2E_DESK_CMD
 // (the command that starts a desk, run in E2E_DESK_DIR, which gets
 // --port <a free port> added) and Linux's /proc for memory.
+// TestStreams opens E2E_VIEWERS pages (default 20). TestKeepAlive,
+// TestBurst and TestStatic are Appendix A's keep-alive rate, 50 page
+// loads at once, and the static files' zipped total.
 package perf
 
 import (
@@ -440,6 +443,11 @@ func TestStreams(t *testing.T) {
 	if pid == 0 {
 		t.Skip("E2E_PID is not set")
 	}
+	viewers := 20
+	if n, err := strconv.Atoi(os.Getenv("E2E_VIEWERS")); err == nil &&
+		n > 0 {
+		viewers = n
+	}
 	for _, traffic := range []bool{false, true} {
 		d := 45.0
 		if traffic {
@@ -452,7 +460,7 @@ func TestStreams(t *testing.T) {
 		stop := make(chan struct{})
 		m := &meter{}
 		var wg sync.WaitGroup
-		for i := 0; i < 20; i++ {
+		for i := 0; i < viewers; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -476,13 +484,15 @@ func TestStreams(t *testing.T) {
 		wg.Wait()
 		hours := el / 3600
 		perView := func(i int) float64 {
-			return float64(b[i]-a[i]) / 20 / hours / 1e6
+			return float64(b[i]-a[i]) / float64(viewers) / hours /
+				1e6
 		}
-		say(t, "x20 traffic=%v %.0fs: FD CPU %.2f%% core, RSS "+
+		say(t, "x%d traffic=%v %.0fs: FD CPU %.2f%% core, RSS "+
 			"%.1f MB | per viewer: down %.2f MB/h, up %.2f MB/h, "+
 			"events %.1f, fetches %.1f in window; chat calls %d",
-			traffic, d, used, mem, perView(0), perView(1),
-			float64(b[2]-a[2])/20, float64(b[3]-a[3])/20, b[4]-a[4])
+			viewers, traffic, d, used, mem, perView(0), perView(1),
+			float64(b[2]-a[2])/float64(viewers),
+			float64(b[3]-a[3])/float64(viewers), b[4]-a[4])
 	}
 }
 
@@ -659,4 +669,85 @@ func TestSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	say(t, "seeded %d seats", len(keys))
+}
+
+// TestKeepAlive is Appendix A's keep-alive requests a second: 8
+// clients, each on one kept connection, for secs, asking for a static
+// file (zipped, as a browser asks) and for the state with its ETag
+// (a 304), as the prototype was measured.
+func TestKeepAlive(t *testing.T) {
+	need(t)
+	for _, c := range []struct {
+		name string
+		fn   func(map[string]any) float64
+	}{
+		{"/app.css gzip", func(ctx map[string]any) float64 {
+			r, _, err := get(conn(ctx), "/app.css", nil)
+			if err != nil || r.StatusCode != 200 {
+				t.Errorf("app.css: %v %v", err, r)
+			}
+			return 0
+		}},
+		{"/api/state 304", state304},
+	} {
+		n := len(run(8, secs, c.fn))
+		say(t, "[ 8 clients] keep-alive %-14s %8.0f a second", c.name,
+			float64(n)/secs)
+	}
+}
+
+// TestBurst is Appendix A's 50 page loads at once: 50 browsers each
+// load the page (6 GETs on a new connection) at the same moment;
+// the worst of them, five rounds. A SYN stall would show as a
+// second or more.
+func TestBurst(t *testing.T) {
+	need(t)
+	var worst []float64
+	for round := 0; round < 5; round++ {
+		var mu sync.Mutex
+		var xs []float64
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := 0; i < 50; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				x := pageLoad(t)
+				mu.Lock()
+				xs = append(xs, x)
+				mu.Unlock()
+			}()
+		}
+		time.Sleep(200 * time.Millisecond)
+		close(start)
+		wg.Wait()
+		sort.Float64s(xs)
+		worst = append(worst, xs[len(xs)-1])
+		say(t, "[50 at once] round %d page load %s", round+1, pct(xs))
+		time.Sleep(time.Second)
+	}
+	sort.Float64s(worst)
+	say(t, "[50 at once] worst of 5 rounds %.1f ms", worst[len(worst)-1])
+	if worst[len(worst)-1] >= 1000 {
+		t.Errorf("a page load took %.0f ms: a stall",
+			worst[len(worst)-1])
+	}
+}
+
+// TestStatic is Appendix A's static files zipped in total: the bytes
+// of each file's body as a browser gets it (gzip asked).
+func TestStatic(t *testing.T) {
+	need(t)
+	total := 0
+	for _, p := range []string{"/", "/app.css", "/app.js", "/icon.svg"} {
+		r, b, err := get(client(), p, nil)
+		if err != nil || r.StatusCode != 200 {
+			t.Fatalf("%s: %v %v", p, err, r)
+		}
+		say(t, "static %-9s %6d bytes, %s", p, len(b),
+			r.Header.Get("Content-Encoding"))
+		total += len(b)
+	}
+	say(t, "static files zipped, total %d bytes", total)
 }

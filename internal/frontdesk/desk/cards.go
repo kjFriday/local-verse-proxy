@@ -87,6 +87,26 @@ type times struct {
 	m    map[string]timeRead
 	bad  map[string]bool
 	warn func(string)
+
+	// ids are card ids by token, made with idKey: each check asks
+	// again for every card's.
+	ids   map[string]string
+	idKey string
+}
+
+// cardID is CardID, remembered.
+func (c *times) cardID(secret []byte, token string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.idKey != string(secret) || len(c.ids) >= 4096 {
+		c.ids, c.idKey = map[string]string{}, string(secret)
+	}
+	id, ok := c.ids[token]
+	if !ok {
+		id = CardID(secret, token)
+		c.ids[token] = id
+	}
+	return id
 }
 
 type timeRead struct {
@@ -164,12 +184,26 @@ func (c *times) expires(v any) (time.Time, bool) {
 
 // SeatState is seat_state: blocked, expired, spent or waiting, ok.
 func (c *times) SeatState(k pyjson.Obj, now time.Time) string {
+	st, _, _ := c.seatState(k, now)
+	return st
+}
+
+// seatState is SeatState, and the time it ends, if it is one that
+// later turns to expired (ok true).
+func (c *times) seatState(k pyjson.Obj, now time.Time) (string,
+	time.Time, bool) {
 	if Truthy(k.Val("blocked")) {
-		return "blocked"
+		return "blocked", time.Time{}, false
 	}
-	if exp, ok := c.expires(k.Val("expires")); ok && !exp.After(now) {
-		return "expired"
+	exp, hasExp := c.expires(k.Val("expires"))
+	if hasExp && !exp.After(now) {
+		return "expired", time.Time{}, false
 	}
+	return c.spentState(k), exp, hasExp
+}
+
+// spentState is the rest of SeatState: spent, waiting or ok.
+func (c *times) spentState(k pyjson.Obj) string {
 	if b := k.Val("max_budget"); b != nil {
 		budget, okb := Number(b)
 		spend := orZero(k.Val("spend"))
@@ -241,11 +275,21 @@ func lastRunes(s string, n int) string {
 // BuildCards is build()'s card list and the id-to-token map.
 func (c *times) BuildCards(keys []pyjson.Obj, secret []byte,
 	game map[string]bool, now time.Time) ([]Card, map[string]string) {
+	cards, tokens, _ := c.buildCards(keys, secret, game, now)
+	return cards, tokens
+}
+
+// buildCards is BuildCards, and the first time after now a card
+// expires (zero if none will): until then the list stays the same.
+func (c *times) buildCards(keys []pyjson.Obj, secret []byte,
+	game map[string]bool, now time.Time) ([]Card, map[string]string,
+	time.Time) {
+	var next time.Time
 	cards := make([]Card, 0, len(keys))
 	tokens := map[string]string{}
 	for _, k := range keys {
 		token := text(k.Val("token"))
-		id := CardID(secret, token)
+		id := c.cardID(secret, token)
 		tokens[id] = token
 		models := k.Val("models")
 		if !Truthy(models) {
@@ -256,6 +300,10 @@ func (c *times) BuildCards(keys []pyjson.Obj, secret []byte,
 			refills = k.Val("budget_duration")
 		}
 		seat := text(k.Val("key_alias"))
+		state, ends, ok := c.seatState(k, now)
+		if ok && (next.IsZero() || ends.Before(next)) {
+			next = ends
+		}
 		cards = append(cards, Card{
 			ID: id, Seat: seat,
 			Ends:   lastRunes(text(k.Val("key_name")), 4),
@@ -263,16 +311,37 @@ func (c *times) BuildCards(keys []pyjson.Obj, secret []byte,
 			Spent: Dollars(k.Val("spend")), Refills: refills,
 			Resets:  c.UTCText(k.Val("budget_reset_at")),
 			Expires: k.Val("expires"), Created: k.Val("created_at"),
-			Used: k.Val("last_active"), State: c.SeatState(k, now),
+			Used: k.Val("last_active"), State: state,
 			Game: game[seat],
 		})
 	}
-	sort.SliceStable(cards, func(i, j int) bool {
-		a, b := cards[i], cards[j]
-		if (a.Seat == "") != (b.Seat == "") {
-			return a.Seat != ""
-		}
-		return pyfmt.Lower(a.Seat) < pyfmt.Lower(b.Seat)
-	})
-	return cards, tokens
+	// Seats in order, ignoring case, cards with no seat last; the
+	// lower-case names made once, not on every comparison.
+	bySeat := cardOrder{cards, make([]string, len(cards))}
+	for i := range cards {
+		bySeat.low[i] = pyfmt.Lower(cards[i].Seat)
+	}
+	sort.Stable(bySeat)
+	return cards, tokens, next
+}
+
+// cardOrder sorts cards with their lower-case seat names alongside.
+type cardOrder struct {
+	cards []Card
+	low   []string
+}
+
+func (o cardOrder) Len() int { return len(o.cards) }
+
+func (o cardOrder) Swap(i, j int) {
+	o.cards[i], o.cards[j] = o.cards[j], o.cards[i]
+	o.low[i], o.low[j] = o.low[j], o.low[i]
+}
+
+func (o cardOrder) Less(i, j int) bool {
+	a, b := o.cards[i].Seat, o.cards[j].Seat
+	if (a == "") != (b == "") {
+		return a != ""
+	}
+	return o.low[i] < o.low[j]
 }

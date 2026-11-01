@@ -46,6 +46,9 @@ var (
 // Counts are the tally's numbers, in order.
 var Counts = [4]string{"spend", "tokens", "reqs", "fails"}
 
+// todayNames are the counts' names for today: t_spend and so on.
+var todayNames = [4]string{"t_spend", "t_tokens", "t_reqs", "t_fails"}
+
 // Row is one tally line: a seat or a model, all time and today (t_).
 // A nil count is Python's None (http_tally, before its last step).
 type Row struct {
@@ -56,12 +59,14 @@ type Row struct {
 
 // Obj is the row as JSON; live, if not nil, is added at the end.
 func (r Row) Obj(live *bool) pyjson.Obj {
-	o := pyjson.O("k", r.K, "name", r.Name)
+	o := make(pyjson.Obj, 0, 11)
+	o = append(o, pyjson.KV{K: "k", V: r.K},
+		pyjson.KV{K: "name", V: r.Name})
 	for i, f := range Counts {
 		o = append(o, pyjson.KV{K: f, V: r.All[i]})
 	}
-	for i, f := range Counts {
-		o = append(o, pyjson.KV{K: "t_" + f, V: r.Today[i]})
+	for i, f := range todayNames {
+		o = append(o, pyjson.KV{K: f, V: r.Today[i]})
 	}
 	if live != nil {
 		o = append(o, pyjson.KV{K: "live", V: *live})

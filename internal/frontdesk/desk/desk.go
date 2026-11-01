@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -88,6 +89,8 @@ type Desk struct {
 	litellm   any
 	db        any
 	tally     *Tally
+	gameGen   int   // one more on each new d.game
+	last      built // the answer published last, with what made it
 
 	// The desk goroutine's own.
 	slowAt, keysAt, tallyAt, fallbackAt, histAt float64
@@ -317,7 +320,7 @@ func (d *Desk) refresh(ctx context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.notes = notes
-	return d.publish(d.build(up, notes))
+	return d.update(up, notes)
 }
 
 // tallyBusyNow says if a tally job still runs.
@@ -443,6 +446,7 @@ func (d *Desk) loadGame() {
 	g := d.games.Get()
 	d.mu.Lock()
 	d.game = g
+	d.gameGen++
 	d.mu.Unlock()
 }
 
@@ -487,7 +491,7 @@ func (d *Desk) ShowChange(ctx context.Context, seat string, gone bool) {
 		}
 	}
 	d.rawKeys = append(out, keys...)
-	if err := d.publish(d.build(true, d.notes)); err != nil {
+	if err := d.update(true, d.notes); err != nil {
 		d.log.Line("check failed: " + pyfmt.Cut(
 			d.live.Scrub(err.Error()), 200))
 	}
@@ -620,13 +624,99 @@ func (d *Desk) loadKeys(ctx context.Context) ([]pyjson.Obj, error) {
 type built struct {
 	obj   pyjson.Obj
 	state *State
+	from  inputs
+}
+
+// inputs are everything build reads. Two equal inputs make the same
+// answer while the clock stays in [now, until).
+type inputs struct {
+	up         bool
+	notes      []string
+	settings   *config.Settings
+	keys       []pyjson.Obj // the same slice, not only equal
+	models     []string     // the same slice
+	litellm    any
+	db         any
+	tally      *Tally
+	gameGen    int
+	secret     string
+	now, until time.Time // until zero: no card will expire
+}
+
+// inputsNow are build's inputs now; d.mu held.
+func (d *Desk) inputsNow(up bool, notes []string) inputs {
+	return inputs{up: up, notes: notes, settings: d.live.Get(),
+		keys: d.rawKeys, models: d.models, litellm: d.litellm,
+		db: d.db, tally: d.tally, gameGen: d.gameGen,
+		secret: string(d.secret), now: d.wallTime()}
+}
+
+func (d *Desk) wallTime() time.Time {
+	return time.Unix(0, int64(d.clk.Wall()*1e9)).UTC()
+}
+
+// same says if an answer built from a would be the one built from b.
+func (a inputs) same(b inputs) bool {
+	if a.up != b.up || a.settings != b.settings ||
+		!sameSlice(a.keys, b.keys) || !sameSlice(a.models, b.models) ||
+		!sameScalar(a.litellm, b.litellm) || !sameScalar(a.db, b.db) ||
+		a.tally != b.tally || a.gameGen != b.gameGen ||
+		a.secret != b.secret || len(a.notes) != len(b.notes) {
+		return false
+	}
+	for i := range a.notes {
+		if a.notes[i] != b.notes[i] {
+			return false
+		}
+	}
+	// A card's state turns to expired with time alone; a clock set
+	// back could turn it back.
+	return !b.now.Before(a.now) &&
+		(a.until.IsZero() || b.now.Before(a.until))
+}
+
+func sameSlice[T any](a, b []T) bool {
+	return len(a) == len(b) && (len(a) == 0 || &a[0] == &b[0])
+}
+
+// sameScalar is a == b for JSON scalars; anything else counts as
+// changed.
+func sameScalar(a, b any) bool {
+	switch a.(type) {
+	case nil:
+		return b == nil
+	case string, bool, json.Number:
+		return a == b
+	}
+	return false
+}
+
+// update publishes the answer now. A check that changed nothing
+// that build reads skips building it again (it would be the same,
+// byte for byte), and only notes the time of the check; d.mu held.
+func (d *Desk) update(up bool, notes []string) error {
+	in := d.inputsNow(up, notes)
+	if d.last.obj != nil && d.last.from.same(in) {
+		d.cmu.Lock()
+		d.checked = d.clk.Wall()
+		d.cmu.Unlock()
+		return nil
+	}
+	b := d.build(up, notes)
+	if err := d.publish(b); err != nil {
+		return err
+	}
+	d.last = b
+	return nil
 }
 
 // build is the answer for the page; d.mu held.
 func (d *Desk) build(up bool, notes []string) built {
-	now := time.Unix(0, int64(d.clk.Wall()*1e9)).UTC()
-	cards, tokens := d.times.BuildCards(d.rawKeys, d.secret, d.game,
-		now)
+	from := d.inputsNow(up, append([]string(nil), notes...))
+	now := from.now
+	cards, tokens, until := d.times.buildCards(d.rawKeys, d.secret,
+		d.game, now)
+	from.until = until
 	d.tokens = tokens
 	var tally any
 	if d.tally != nil {
@@ -664,7 +754,7 @@ func (d *Desk) build(up bool, notes []string) built {
 	}
 	def := s.Defaults
 	st := &State{Up: up, Models: d.models, Cards: cards}
-	return built{pyjson.O(
+	return built{from: from, obj: pyjson.O(
 		"desk", pyjson.O("up", up, "litellm", d.litellm, "db", d.db,
 			"lan", d.lan, "notes", scrubbed),
 		"models", d.models,
@@ -672,13 +762,16 @@ func (d *Desk) build(up bool, notes []string) built {
 			"budget", def.Budget, "duration", def.Duration),
 		"cards", cardObjs,
 		"tally", tally,
-	), st}
+	), state: st}
 }
 
 // publish stores a new answer if it differs; d.mu held.
 func (d *Desk) publish(b0 built) error {
 	st := b0.state
-	body := pyjson.Compact(b0.obj)
+	d.cmu.Lock()
+	size := len(d.body) + len(d.body)/8
+	d.cmu.Unlock()
+	body := pyjson.Options{Compact: true}.MarshalSized(b0.obj, size)
 	sum := sha256.Sum256(body)
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	var gz []byte

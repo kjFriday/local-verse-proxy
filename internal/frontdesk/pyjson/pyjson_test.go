@@ -1,7 +1,10 @@
 package pyjson
 
 import (
+	"bytes"
 	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -63,4 +66,48 @@ func TestDecode(t *testing.T) {
 	if _, err := Decode(deep); err == nil {
 		t.Error("no limit on depth")
 	}
+}
+
+// sameDecode checks that Decode gives what the token-by-token reader
+// gives: the same value, or an error with the same text.
+func sameDecode(t *testing.T, in []byte) {
+	t.Helper()
+	got, gerr := Decode(in)
+	want, werr := decodeSlow(bytes.TrimPrefix(in, []byte("\xef\xbb\xbf")))
+	if (gerr == nil) != (werr == nil) ||
+		gerr != nil && gerr.Error() != werr.Error() {
+		t.Fatalf("%q: error %v, want %v", in, gerr, werr)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%q: got %#v, want %#v", in, got, want)
+	}
+}
+
+var decodeSeeds = []string{
+	``, ` `, `null`, `true`, `false`, `tru`, `nul`, `0`, `-0`, `01`,
+	`-`, `1.`, `.5`, `1e`, `1e+`, `1E-07`, `-12.5e3`, `1.5e400`,
+	`""`, `"a"`, `"é"`, `"\ud800"`, `"😀"`, `"\x"`,
+	`"\u12"`, `"\u12g4"`, "\"\xff\"", "\"\xc3\xa9\"", "\"a\x01\"",
+	`"\/\b\f\n\r\t\"\\"`, `[]`, `[ ]`, `[1,]`, `[,1]`, `[1 2]`,
+	`{}`, `{ }`, `{"a":1,}`, `{"a" 1}`, `{1:2}`, `{"a":1,"a":2}`,
+	`{"b": 1, "a": [true, null, {"c": "d"}], "b": 3}`, `{} {}`,
+	`[1] `, " \n\t\r[1]\r\n", `NaN`, `[Infinity]`, `[-Infinity]`,
+	"\xef\xbb\xbf[1]", `{"kA": "v"}`, `{"a":"\u0000"}`,
+}
+
+func TestDecodeSame(t *testing.T) {
+	for _, s := range decodeSeeds {
+		sameDecode(t, []byte(s))
+	}
+	deep := strings.Repeat("[", fastDepth+3) + strings.Repeat("]",
+		fastDepth+3)
+	sameDecode(t, []byte(deep))
+	sameDecode(t, []byte(`{"x": `+deep+`}`))
+}
+
+func FuzzDecode(f *testing.F) {
+	for _, s := range decodeSeeds {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, in []byte) { sameDecode(t, in) })
 }

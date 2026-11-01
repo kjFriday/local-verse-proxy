@@ -177,7 +177,17 @@ func (c *Client) Raw(ctx context.Context, path string,
 		return 0, nil, c.hide(err)
 	}
 	defer resp.Body.Close()
-	body, err = io.ReadAll(io.LimitReader(resp.Body, c.maxAnswer+1))
+	// As io.ReadAll, but in one piece when the length is known: a
+	// page of 100 key cards is half a megabyte.
+	var buf bytes.Buffer
+	if n := resp.ContentLength; n > 0 && n <= c.maxAnswer {
+		buf.Grow(int(n) + bytes.MinRead)
+	}
+	_, err = buf.ReadFrom(io.LimitReader(resp.Body, c.maxAnswer+1))
+	body = buf.Bytes()
+	if body == nil {
+		body = []byte{}
+	}
 	if err != nil {
 		return resp.StatusCode, body, c.hide(err)
 	}
