@@ -904,6 +904,8 @@ network over plain HTTP.
 - `README.md`: this guide.
 - `docs/lvp-handbook.md`: how to use `lvp`, the Go program for
   keys, Front Desk and the game, with Windows and WSL steps.
+- `docs/port-spec.md`: the design `lvp` was built from; code comments
+  cite its sections.
 - `config.yaml`: the models, and the names of the settings that hold
   their secrets. No secrets inside, so it is safe to commit.
 - `seats.env.example`: the template for your secrets file.
