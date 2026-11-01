@@ -24,7 +24,7 @@ desk` on 8023 and Python `gui/frontdesk.py` on 8123. Torn down after
 
 | Gate | What | Result |
 |------|------|--------|
-| G-1  | CI green | passed in CI (ci and parity, ce72611) |
+| G-1  | CI green | passed in CI (ci and parity, 8df83c1) |
 | G-2  | Every golden suite | passed here |
 | G-3  | Twin harness, 3 runs, 4 modes | passed here, in part (no --docker) |
 | G-4  | Security suite as Python's | passed here, in part (12 not run) |
@@ -79,7 +79,7 @@ Then the lead (fix round F2):
 
 ## G-1 CI green
 
-**passed in CI** on ce72611: ci (14 jobs: six systems with Go 1.26
+**passed in CI** on 8df83c1: ci (14 jobs: six systems with Go 1.26
 and 1.27, checks with -race, pg) and parity (twin harness, image).
 It took four fix rounds after the C2-C4 commit, all in tests but
 one (the desk's tally flag, frontdesk.md F-13). What ran here too:

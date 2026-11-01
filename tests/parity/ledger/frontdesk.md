@@ -1,7 +1,7 @@
 # Ledger: Front Desk (chunk C2)
 
 Every way `lvp desk` differs from `python3 gui/frontdesk.py` at
-`py-reference` (39d5808), with why, why it is not weaker, and the
+`py-reference` (c7d7098), with why, why it is not weaker, and the
 test that shows it. Format and rules: spec section 19. Entries that
 live in another chunk's ledger are pointed to, not repeated (B-n:
 tests/parity/ledger/base.md).

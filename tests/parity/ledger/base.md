@@ -35,7 +35,7 @@ image.
 
 ## Step 0: the merged contract, checked against spec section 10
 
-Re-read on `main` at `py-reference` (39d5808): `gui/frontdesk.py`,
+Re-read on `main` at `py-reference` (c7d7098): `gui/frontdesk.py`,
 `compose.yaml`, `gui/Dockerfile`, `gui/README.md`, `README.md`. The
 table in section 10 holds. These points it leaves out, or gets
 slightly wrong; the code is the oracle, so C2 follows the code:
