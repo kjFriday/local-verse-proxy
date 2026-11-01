@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -84,6 +85,9 @@ func NewWith(o Options) (*Client, error) {
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
+	tr.DialContext = localhostFirst((&net.Dialer{
+		Timeout: 30 * time.Second, KeepAlive: 30 * time.Second,
+	}).DialContext)
 	if o.EnvProxy {
 		tr.Proxy = http.ProxyFromEnvironment
 	}

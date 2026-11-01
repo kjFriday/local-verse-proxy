@@ -543,6 +543,26 @@ Tests   internal/litellm: TestEchoedKeyIsHidden, TestRedirectHidesKey,
         TestNoRedirects
 ```
 
+```text
+ID      B-19
+What    A proxy address of "localhost" is tried as ::1 first, then
+        127.0.0.1 after 300 ms (or at once if ::1 is refused); the
+        first connection made is used. This is how curl, and so
+        mint-key.sh, reads localhost. Go's resolver, and Python's
+        (gui/frontdesk.py, game/office.py), take /etc/hosts, where
+        on many Linux systems localhost is 127.0.0.1 only. Any other
+        host, 127.0.0.1 written out included, is dialed as it is.
+Why     Seen on a real Windows machine: inside WSL with the proxy in
+        Docker, 127.0.0.1:4000 accepted and then hung while
+        [::1]:4000 answered, so lvp mint-key and lvp desk failed
+        with PROXY_URL=http://localhost:4000 where mint-key.sh and
+        curl worked.
+Safe    Both addresses are this machine's own loopback; nothing
+        leaves it. Where ::1 is missing the dial falls through at
+        once, so nothing gets slower.
+Tests   internal/litellm: TestLocalhostFirst, TestLocalhostReal
+```
+
 Not a difference, written down so nobody looks for one: `lvp
 mint-key` and the `mint-key` shim print the same bytes as go-port's
 `mint-key` for every case its tests and `tests/mint-parity.sh` cover
