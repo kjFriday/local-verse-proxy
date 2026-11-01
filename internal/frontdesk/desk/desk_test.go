@@ -122,6 +122,11 @@ func (r *rig) check(t *testing.T) pyjson.Obj {
 		r.d.safeRefresh(context.Background())
 		close(done)
 	}()
+	// A check that waits on the fake clock (a tally job a test has
+	// blocked) gets the clock moved on; but only once it has waited
+	// half a second of real time, so a tally that is merely slow on
+	// a busy machine does not see the clock jump 10 s under it.
+	var since time.Time
 	for {
 		select {
 		case <-done:
@@ -132,8 +137,14 @@ func (r *rig) check(t *testing.T) pyjson.Obj {
 			}
 			return v.(pyjson.Obj)
 		case <-time.After(20 * time.Millisecond):
-			if r.clk.Waiting() > 0 {
+			switch {
+			case r.clk.Waiting() == 0:
+				since = time.Time{}
+			case since.IsZero():
+				since = time.Now()
+			case time.Since(since) >= 500*time.Millisecond:
 				r.clk.Advance(tallyWait)
+				since = time.Time{}
 			}
 		}
 	}

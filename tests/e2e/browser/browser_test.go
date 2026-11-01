@@ -16,7 +16,11 @@
 // --docker): the scripts that log in run. Without it the desk is a
 // local one: the scripts that open the page straight away run, and
 // with E2E_STOP and E2E_START (shell commands that stop and start the
-// desk) the restart scripts too. E2E_PROXY_URL and E2E_SEATS_ENV let
+// desk) the restart scripts too. E2E_MODE=docker (a desk with a
+// password, as --docker always has) runs them all: the scripts that
+// do not log in get login.js preloaded, which logs in through
+// /api/login and hands the cookie to Playwright. E2E_PROXY_URL and
+// E2E_SEATS_ENV let
 // the test make the hostile cards the scripts look for, straight in
 // LiteLLM (hostile_mint.py and spend_hostile.py). Node must find
 // playwright (NODE_PATH, or a global install).
@@ -44,6 +48,8 @@ type env struct {
 	url, pwfile, proxy, master, shots string
 	stop, start                       string
 	gameSeat                          string // a game card on the page
+	docker                            bool   // E2E_MODE=docker
+	preload                           string // login.js, absolute
 }
 
 func setup(t *testing.T) *env {
@@ -70,6 +76,15 @@ func setup(t *testing.T) *env {
 		}
 	}
 	e.shots = t.TempDir()
+	e.docker = os.Getenv("E2E_MODE") == "docker"
+	if e.docker && e.pwfile == "" {
+		t.Fatal("E2E_MODE=docker needs E2E_PWFILE")
+	}
+	p, err := filepath.Abs("login.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.preload = p
 	return e
 }
 
@@ -293,7 +308,10 @@ func TestScripts(t *testing.T) {
 			e.spending(t)
 		}
 		t.Run(filepath.Base(s.file), func(t *testing.T) {
-			if s.pw != (e.pwfile != "") {
+			// With a password, a script that does not log in
+			// runs only in docker mode, with login.js preloaded.
+			cookie := !s.pw && e.pwfile != ""
+			if s.pw != (e.pwfile != "") && !(cookie && e.docker) {
 				t.Skip("for a desk with a password: " +
 					fmt.Sprint(s.pw))
 			}
@@ -321,6 +339,17 @@ func TestScripts(t *testing.T) {
 			}
 			cmd := exec.Command("node", append([]string{
 				filepath.Join(ref, s.file)}, args...)...)
+			if cookie {
+				start := ""
+				if s.stop {
+					start = e.start
+				}
+				cmd.Env = append(os.Environ(),
+					"NODE_OPTIONS=--require "+e.preload,
+					"E2E_URL="+e.url,
+					"E2E_PWFILE="+e.pwfile,
+					"E2E_START="+start)
+			}
 			out, err := cmd.CombinedOutput()
 			text := string(out)
 			t.Logf("%s:\n%s", s.file, text)
@@ -404,7 +433,12 @@ func sameAsRecorded(t *testing.T, text string) {
 
 // gameCard is the seat of a game card on the page, or "".
 func gameCard(t *testing.T, e *env) string {
-	resp, err := http.Get(e.url + "/api/state")
+	ck, _ := e.session(t)
+	req, _ := http.NewRequest("GET", e.url+"/api/state", nil)
+	if ck != "" {
+		req.Header.Set("Cookie", ck)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return ""
 	}
@@ -424,24 +458,56 @@ func gameCard(t *testing.T, e *env) string {
 	return ""
 }
 
-// mintVia makes a card through Front Desk's own API (local desk, no
-// password), so the scripts that need one find it.
-func mintVia(t *testing.T, e *env, seat string) {
-	u := e.url
-	resp, err := http.Get(u + "/api/session")
+// session is the Cookie header and CSRF token of a new session (a
+// desk with a password: logged in through /api/login), or "" and the
+// local desk's token.
+func (e *env) session(t *testing.T) (cookie, csrf string) {
+	var s map[string]any
+	if e.pwfile == "" {
+		resp, err := http.Get(e.url + "/api/session")
+		if err != nil {
+			t.Fatal(err)
+		}
+		json.NewDecoder(resp.Body).Decode(&s)
+		resp.Body.Close()
+		csrf, _ = s["csrf"].(string)
+		return "", csrf
+	}
+	b, err := os.ReadFile(e.pwfile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var s map[string]any
+	body, _ := json.Marshal(map[string]string{
+		"password": strings.TrimSpace(string(b))})
+	resp, err := http.Post(e.url+"/api/login", "application/json",
+		bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
 	json.NewDecoder(resp.Body).Decode(&s)
 	resp.Body.Close()
-	csrf, _ := s["csrf"].(string)
+	if resp.StatusCode != 200 {
+		t.Fatalf("login: %d", resp.StatusCode)
+	}
+	cookie, _, _ = strings.Cut(resp.Header.Get("Set-Cookie"), ";")
+	csrf, _ = s["csrf"].(string)
+	return cookie, csrf
+}
+
+// mintVia makes a card through Front Desk's own API (logged in if
+// the desk has a password), so the scripts that need one find it.
+func mintVia(t *testing.T, e *env, seat string) {
+	u := e.url
+	ck, csrf := e.session(t)
 	b, _ := json.Marshal(map[string]any{"seat": seat,
 		"models": []string{"local"}, "budget": "1", "duration": "1d"})
 	req, _ := http.NewRequest("POST", u+"/api/mint", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-CSRF-Token", csrf)
 	req.Header.Set("Origin", u)
+	if ck != "" {
+		req.Header.Set("Cookie", ck)
+	}
 	r, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

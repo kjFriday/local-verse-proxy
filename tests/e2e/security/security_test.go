@@ -775,6 +775,126 @@ func TestLock(t *testing.T) {
 	}
 }
 
+// TestLock2 is lock2.py, lock_vb's elder: the lock of 5, the old
+// lockout of 3 devices, a flood of 200 from 40 devices one at a time.
+// Its addresses are TestLock's, so it needs a desk no test has locked
+// yet: run it alone (-run TestLock2) on a fresh desk; it skips if
+// 127.0.0.7 is locked already.
+func TestLock2(t *testing.T) {
+	d := e2ekit.FromEnv(t)
+	devices(t, d)
+	if d.PW == "" {
+		t.Skip("needs a password (E2E_PWFILE)")
+	}
+	wrong := strings.Repeat("wrong-", 3)
+	l := func(src, pw string) try {
+		a, err := d.Req(src, "POST", "/api/login",
+			map[string]string{"password": pw}, nil,
+			map[string]string{"Origin": "http://" + d.Host})
+		if err != nil {
+			t.Errorf("login from %s: %v", src, err)
+			return try{}
+		}
+		msg := a.Err()
+		if msg == "" {
+			msg = "ok"
+		}
+		return try{a.Status, msg, a.Header.Get("Retry-After")}
+	}
+	say(t, "== one device: 5 wrong tries (1.1 s apart), then locked")
+	for i := 0; i < 6; i++ {
+		r := l("127.0.0.7", wrong)
+		if i == 0 && r.st == 429 {
+			t.Skip("127.0.0.7 is locked already: run TestLock2 " +
+				"alone, on a fresh desk")
+		}
+		say(t, "  127.0.0.7 wrong %d %s", i+1, r)
+		time.Sleep(1100 * time.Millisecond)
+	}
+	r := l("127.0.0.7", d.PW)
+	say(t, "  127.0.0.7 RIGHT %s", norm(r.String()))
+	if r.st != 429 {
+		t.Errorf("right while locked: %v", r)
+	}
+	r = l("127.0.0.8", d.PW)
+	say(t, "  127.0.0.8 RIGHT %s", r)
+	if r.st != 200 {
+		t.Errorf("fresh device: %v", r)
+	}
+
+	say(t, "== old lockout: 5 wrong each from 3 devices, then a new "+
+		"device")
+	for _, a := range []string{"127.0.1.1", "127.0.1.2", "127.0.1.3"} {
+		var st try
+		for i := 0; i < 5; i++ {
+			st = l(a, wrong)
+			time.Sleep(1050 * time.Millisecond)
+		}
+		say(t, "  %s after 5 wrong: %s", a, st)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	r = l("127.0.2.50", d.PW)
+	say(t, "  fresh 127.0.2.50 RIGHT: %s", r)
+	if r.st != 200 {
+		t.Errorf("fresh after 3: %v", r)
+	}
+
+	say(t, "== flood: 200 wrong tries from 40 devices as fast as "+
+		"possible")
+	t0 := time.Now()
+	type key struct {
+		st int
+		ra string
+	}
+	codes := map[key]int{}
+	checked := 0
+	for i := 0; i < 200; i++ {
+		st := l(fmt.Sprintf("127.0.3.%d", i%40+1), wrong)
+		codes[key{st.st, st.ra}]++
+		if st.st == 401 {
+			checked++
+		}
+	}
+	dt := time.Since(t0).Seconds()
+	var ks []string
+	for k, n := range codes {
+		ks = append(ks, fmt.Sprintf("(%d, %s): %d", k.st, none(k.ra),
+			n))
+	}
+	sort.Strings(ks)
+	say(t, "  %.2f s; answers (status, Retry-After): {%s}", dt,
+		strings.Join(ks, ", "))
+	say(t, "  passwords actually checked: %d (at most %d allowed)",
+		checked, int(dt)+1)
+	if checked > int(dt)+1+40 {
+		t.Errorf("checked %d in %.1f s", checked, dt)
+	}
+	r = l("127.0.3.200", d.PW)
+	say(t, "  right password at once after the flood: %s", r)
+	if r.st != 200 {
+		t.Errorf("right at once: %v", r)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	say(t, "  right password 1.1 s later: %s", l("127.0.3.201", d.PW))
+}
+
+// TestLogFlood is logflood.py: how fast one locked device grows the
+// log. 127.0.0.7 is locked by TestLock or TestLock2; refusals are
+// not logged, so at most a line a second.
+func TestLogFlood(t *testing.T) {
+	d := e2ekit.FromEnv(t)
+	devices(t, d)
+	needLog(t, d)
+	if d.PW == "" {
+		t.Skip("needs a password (E2E_PWFILE)")
+	}
+	n0, b0 := logLines(d), d.LogSize()
+	cnt, dt := flood(8, 5*time.Second, func() {
+		d.Login("127.0.0.7", wrong)
+	})
+	rate(t, d, "one locked device, 8 conns", n0, b0, cnt, dt, 2)
+}
+
 func none(s string) string {
 	if s == "" {
 		return "None"

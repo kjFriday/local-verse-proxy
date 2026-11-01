@@ -289,7 +289,9 @@ Tests   web TestGoldenServerLocal (headers trimmed in both)
 ID      H-1
 What    Requests net/http refuses before any handler get its plain
         400, 431 or 505, without JSON or safety headers: a bad
-        request line, HTTP/2.0, no Host on HTTP/1.1, two Hosts, a
+        request line, HTTP/2.0, no Host on HTTP/1.1, two Hosts
+        (Python read the first, so with --lan "ip, evil" was served
+        and "evil, ip" refused), a
         bad or negative Content-Length (Python: 400 "Send valid
         JSON." on a POST, nothing on a GET), control bytes, headers
         over 1 MiB, a Host with bytes outside ASCII (Python: its 421
@@ -298,7 +300,9 @@ Why     net/http checks these first.
 Safe    Browsers never send them; nothing is echoed or logged.
 Tests   web TestNoRequestLog; TestGoldenServerLocal ("host
         127.0.0.1:{port}\u0131": Go's 400 checked, Python's 421 in the
-        golden); twin harness (expected.json)
+        golden); twin harness (expected.json); tests/e2e/security
+        TestRawHost, TestInputs, TestSecFix (side by side, gate-a.md
+        G-4)
 
 ID      H-2
 What    An absolute-form target (GET http://host/x) is checked by
@@ -308,11 +312,18 @@ Safe    Still one Host check, then 404 for the path.
 Tests   by construction (web.get uses req.Host)
 
 ID      H-3
-What    A Host with userinfo (user@10.0.0.5:8040) is net/http's 400;
-        Python's host_ok refused it with 421 anyway.
+What    A Host with userinfo (user@10.0.0.5:8040) is net/http's 400.
+        Python's host_ok refused it with 421 in local mode; with
+        --lan its urlsplit took the part after the @, so
+        "evil.test@192.0.2.2:8132" was served, 200 (seen live,
+        rawhost.py's case, G-4; --docker runs the same code).
 Why     net/http.
-Safe    Refused either way.
-Tests   web TestGoldenHostOK (the function agrees with Python)
+Safe    Stricter: refused in every mode. A browser never sends
+        userinfo in Host; the rest of the request is checked as
+        before.
+Tests   web TestGoldenHostOK (the function agrees with Python);
+        tests/e2e/security TestRawHost (local and --lan, side by
+        side)
 
 ID      H-4
 What    A slow sender gets 10 s for the whole request (Python: 10 s
@@ -369,6 +380,15 @@ Safe    The same names pass and the same names are refused; only the
 Tests   web TestGoldenServerLocal ("host 127.0.0.1:{port} \t": Go's
         200 checked, Python's 421 in the golden); twin harness
         (expected.json)
+
+ID      H-9
+What    A Host with a space inside it ("192.0.2.2 :8040") is
+        net/http's 400 "malformed Host header"; Python's host_ok
+        answered its 421 JSON.
+Why     net/http checks the Host's characters before any handler.
+Safe    Refused either way; nothing is echoed or logged.
+Tests   tests/e2e/security TestRawHost ("space in host", local and
+        --lan, side by side, gate-a.md G-4)
 
 ID      F-25
 What    In host mode a mint or revoke gives up after 25 s

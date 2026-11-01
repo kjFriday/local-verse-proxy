@@ -27,10 +27,10 @@ desk` on 8023 and Python `gui/frontdesk.py` on 8123. Torn down after
 | G-1  | CI green | passed in CI (ci and parity, 8df83c1) |
 | G-2  | Every golden suite | passed here |
 | G-3  | Twin harness, 3 runs, 4 modes | passed here, in part (no --docker) |
-| G-4  | Security suite as Python's | passed here, in part (12 not run) |
+| G-4  | Security suite as Python's | passed here (12 more, side by side) |
 | G-5  | Secret sweep, zero hits | passed here |
-| G-6  | Page contract; browser | passed here, in part (11 not on image) |
-| G-7  | Appendix A targets | failed (CPU); 9 rows not measured |
+| G-6  | Page contract; browser | passed here (stand-in image) |
+| G-7  | Appendix A targets | passed here (CPU fixed, P1) |
 | G-8  | Game: week, cross-play, quests, rescore | passed here |
 | G-9  | Image | passed here, in part (arm64 not run) |
 | G-10 | Release dry run | passed here, in part (Linux only) |
@@ -38,10 +38,14 @@ desk` on 8023 and Python `gui/frontdesk.py` on 8123. Torn down after
 | G-12 | Hand runs (MANUAL.md) | not done |
 | G-13 | Ledger complete | passed here, in part (no --docker twin) |
 
-Gate A is **not** met: G-4 (scripts not ported), G-6 (scripts not run
-against the image), G-7 (Front Desk CPU, and rows not measured) and
-G-12 (hand runs) are open, and parts of G-3, G-9, G-10 and G-13 run
-only in CI or where PyPI is reachable.
+Gate A is **not** met: G-12 (the hand runs) is open, and parts of
+G-3, G-9, G-10 and G-13 run only in CI or where PyPI is reachable
+(Python's --docker side needs psycopg). G-4 and G-6 ran on a
+stand-in image (the real build stage downloads modules, which this
+sandbox cannot). One overlap to know of: for about five minutes
+(14:04 to 14:09 UTC on 1 November) G-4's flood and cap tests ran
+during G-7's measuring window; G-7's A/B ran both desks under the
+same conditions, and its numbers were repeated in a second round.
 
 ## After verification (fix round F1)
 
@@ -143,11 +147,22 @@ met in full.
 
 ## G-4 Security suite
 
-**passed here, in part.** What ran passed;
-twelve scripts spec 16.5 names were not ported or run (listed at
-the end of this section). `tests/e2e/security` (the reference scripts ported to
-Go) ran against Python and against Go, both with `--lan` on the real
-stack (loopback aliases as devices), and against Go in Docker:
+**passed here.** Every script spec 16.5 names is ported to Go
+(`tests/e2e/security`) and ran against Python and against Go. The
+first five (eight tests) ran on `lvp-c4` (below); the twelve left
+open there were ported
+and run in a later round on stack `lvp-s1` (LiteLLM v1.106.6 on
+4232, Postgres 16, a fake Ollama; Go `lvp desk` on 8032, Python
+`gui/frontdesk.py` on 8132, each desk with its own psql, `--lan` with
+loopback aliases as devices), side by side: the same test binary
+against Python, then against Go, each line printed (E2E_OUT) and the
+two outputs compared with diff (spec 16.5's method). The whole suite
+then ran again in one go on each desk (19 passed on both; lock2 and
+the leaky mint skip there and ran on their own desks). Every
+difference is a ledger entry, or a clock or a speed (below).
+
+The first five, on `lvp-c4`, against Python and Go with `--lan`,
+and against Go in Docker:
 
 - Lock (lock_vb): every line of both outputs equals the recorded
   `lock4163.out` (timings and Retry-After counts aside): the five
@@ -172,18 +187,77 @@ stack (loopback aliases as devices), and against Go in Docker:
 - In Docker (every request one device): Host, cookie, CSRF, bodies,
   streams and the lock lines as above.
 
-Not ported or run as scripts: typo_vb, rst_vb, rst2_vb, nest_vb,
-surr_vb, logflood, refill_vb, game_vb, inputs, rawhost, sec_fix and
-lock2. Spec 16.5's method (run against Python, then against Go)
-needs no recorded output, so "nothing recorded" does not excuse
-them: G-4 is open until they are ported and run side by side. Their
-requests are partly covered elsewhere: the twin harness sends the
-body, nesting, surrogate, Host, mint and login cases; C2's goldens
-(frontdesk_http.py: inputs, refill_vb, game_vb's checks) and the
-Gate goldens (window_vb, window2_vb, clock_vb, clock2_vb, whose
-traces they replay). Not covered by any test here: logflood's log
-rate bound, and rst/rst2's freed slots after hard resets beyond
-misc_vb's 30 streams.
+The twelve of the later round (`scripts_test.go`; lock2 and
+logflood in `security_test.go`), each passing against both:
+
+- typo_vb (TestTypo): a device that mistyped once gets in while two
+  attackers guess from 10 addresses. Python: 50 attacker tries
+  checked, the typo device in after 41 s, in each run; Go: the same
+  in one run of three, in after 13 s and 15 s in the others. Which
+  device wins the one try a second is chance; the rule is the same
+  code (`gate.Login` is Python's login line by line).
+- surr_vb (TestSurrogate): a lone-surrogate password is a wrong
+  password: 4, 3, 2, 1 tries left, then the lock, the same words;
+  8 connections for 5 s from the locked device: 0 log lines.
+- nest_vb (TestNested): 4000-deep JSON gets 400; 5 s from 8
+  connections: 0 log lines.
+- rst_vb, rst2_vb (TestResets, TestResets2): 20 resets, then 4
+  threads for 5 s, then 22 kinds of reset request (bad lines, 414,
+  431, 501, 421, 405, half bodies, pipelined, idle keep-alive): 0 log
+  lines each; the address still holds exactly 32 after.
+- logflood (TestLogFlood): a locked device for 5 s from 8
+  connections: 0 log lines.
+- lock2 (TestLock2, on fresh desks): every line equal but the
+  Retry-After count and the flood's time: the lock of 5, the old
+  lockout of 3 devices, then 200 wrong from 40 devices: 40 checked,
+  160 refused with Retry-After 1, the right password at once.
+- refill_vb (TestRefill): 23 bad refills refused (field refill), no
+  card made; 1d, 1w, 1mo, empty and none minted and echoed; the four
+  durations; the cards' states equal (times aside). refill_vb waited
+  1.5 s before its last look; the port waits 3.5 s, since both desks
+  rebuild the state every 2 s and whether the 1 s card showed as
+  expired was chance.
+- game_vb (TestGameNames): game-, GAME- and Game- names refused with
+  the same words, gamex and my-game minted.
+- inputs (TestInputs, local and `--lan`): the 24 field cases and the
+  revoke cases give the same codes, fields and words. A budget as a
+  number (2.5), " 5 " and 30m are taken by both since; the port
+  cancels them at once, as inputs.py did.
+- rawhost (TestRawHost, local and `--lan`): 13 Host shapes; equal but
+  for the ledgered ones below.
+- sec_fix (TestSecFix): the Host table, the tries left, the session
+  bound to its device, HEAD and PUT, the psql child without
+  FRONTDESK_PASSWORD, 400 stalled connections (368 closed by the cap,
+  a page refused, served again 11 s later): equal but for thread
+  counts and the ledgered bad-request line. Its last part, which ran
+  Python's plain_error on mint-key.sh's stderr, is
+  TestMintErrorScrubbed, from outside: a leaky stand-in for the proxy
+  answers /key/generate with a key's end and a 64-hex hash; both
+  desks show "The proxy did not accept the master key...", and both
+  logs have "Received API Key = [hidden]", no end, no hash.
+
+Differences seen, each ledgered (tests/parity/ledger/frontdesk.md):
+no Host on HTTP/1.1, two Hosts, a bad request line,
+Content-Length abc and -5 (H-1; Python read the first of two Hosts,
+so "ip, evil" was served there); an absolute URI with another host
+(H-2: Go 421, Python 404); a Host with userinfo (H-3, corrected:
+with `--lan` Python served it, 200; Go 400); an HTTP/1.0 status line
+(H-5); a Host with a space inside (H-9, new: Go 400, Python 421);
+"mint-key said" where Python said "mint-key.sh said" (F-3). Not
+behaviour: request counts and times (Go answered 1.5 to 190 times
+as many flood requests), thread counts, and once (1 run of 3) Go's cap
+refusal read as a reset where Python's read as a closed connection
+(both refused; it depends on whether the request bytes were read
+before the close).
+
+Against Go in Docker (the image of G-6, every request one device,
+its log read through `docker compose logs`): nest_vb, rst_vb,
+rst2_vb, refill_vb, game_vb, inputs and rawhost pass, with the same
+lines as Go on the host but Docker's own Host message and the
+machine's name ("VM") refused, as FRONTDESK_HOSTS was empty; the five
+that need devices (typo_vb, surr_vb, sec_fix, lock2, logflood) skip
+there, as TestCaps does. Python's --docker could not run here
+(psycopg).
 
 ## G-5 Secret sweep
 
@@ -197,14 +271,44 @@ Also: FRONTDESK_PASSWORD was empty in the proxy and db containers
 
 ## G-6 Page contract and browser scripts
 
-**passed here, in part.** Spec 16.5 asks for every browser script
-against Go in host mode and in --docker. In --docker only six ran:
-the scripts that do not log in cannot run against a desk that has a
-password, and --docker always has one. Not run against the image:
-race, race2, race3, keepit, keepit2, closerace, restart_fix,
-down_mint, fallback, evil2_vb and lan_restart. To close it: log in
-once through /api/login and hand the cookie to Playwright
-(storageState or context.addCookies), then run them on the image.
+**passed here.** Spec 16.5 asks for every browser script against Go
+in host mode and in --docker: all seventeen passed against the image
+(round G4/G6, stack `lvp-s1`), the eleven that do not log in among
+them. --docker always has a password, so for those eleven the test
+preloads `tests/e2e/browser/login.js` into node (E2E_MODE=docker):
+it logs in once through /api/login and hands the cookie to each new
+browser context with context.addCookies; the scripts run as written.
+restart_fix and down_mint stop and start the desk, which then has no
+sessions (lan_restart shows the login screen it asks for): after the
+start command, login.js logs in again before the page's next request
+leaves, as the person would, and sends the new cookie.
+
+The image was a **stand-in**: the root Dockerfile's stage 2 verbatim,
+its stage 1 replaced by a host-built `CGO_ENABLED=0 go build -trimpath
+-ldflags "-s -w" -o lvp ./cmd/lvp` (of HEAD) and its notices (`go run
+./internal/notices -bin lvp`, 2,477 lines), as containers here cannot
+download Go modules; the real stage 1 (the pinned golang:1.27.3
+digest, `go mod download`) was not built. Run by compose
+(`--profile frontdesk`, read-only root, user 10001), on 8032, the
+game folder mounted with `lvp game setup`'s seats; stop and start
+were `docker compose stop` and `start frontdesk`.
+
+- On the image: evil2_vb (the other site's fetch and mint blocked, its
+  form refused, no card made), race2, race3 (on the game's own
+  cards), fallback, keepit, keepit2, race, closerace, restart_fix
+  ("Reconnecting", then "Desk open", a mint with no reload), down_mint
+  ("Front Desk is not answering", then the same form mints), and
+  lan_restart (the login screen after the restart): pass, with the
+  six of the first round (xss_vb, xss3_vb, xss4_vb, tally_xss,
+  text_vb, evil_vb).
+- The same test, the same way (a password, login.js), against Python
+  (`gui/frontdesk.py --login`, the host; Python's --docker needs
+  psycopg): all seventeen pass, and the lines equal the image's but
+  for what the stack held (which cards existed, the key ends, the
+  tally's counts, the scroll positions that follow) and one number:
+  race2's note height 600 ms after a cancel (224 or 355 px), which
+  is the page's own transition caught mid-way; three runs of race2
+  alone on the image gave 355, 355, 224.
 
 - Page contract (`tests/parity/page_test.go`, every CI run): 57 fields
   app.js reads, with their JSON types, checked against Go's answers in
@@ -231,18 +335,38 @@ once through /api/login and hand the cookie to Playwright
 
 ## G-7 Appendix A targets
 
-**failed.** tests/e2e/perf-results.md has the table. Of the rows
-measured, Go meets or beats Python on all but one: **Front Desk CPU
-with 20 open pages**, 0.84% of a core against 0.51% idle, 0.98%
-against 0.71% with traffic, the same in every run; with one open
-page, 0.87% against 0.30%. The cost is in the 2-second checks while
-someone watches, not in the streams. This is C2's code; it needs a
-fix before Gate A.
+**passed here** (fix round P1, stack `lvp-p1`, one A/B session with
+200 cards and a year of history, 146,001 daily rows).
+tests/e2e/perf-results.md has the table and the method. Every
+Appendix A row was measured, Python and Go in turn, and Go is at most
+Python plus 10% on each:
 
-Not measured (so G-7 is not met even with the CPU fixed): tally
-today, history, psql start, the watching cost on Postgres and on
-LiteLLM, the whole check p50, keep-alive requests a second, 50 page
-loads at once, and the static files zipped in total.
+- **Front Desk CPU, fixed.** With 20 open pages and chat traffic Go
+  now uses 0.37-0.41% of a core against Python's 0.68-0.70%. Idle it
+  uses 0.31-0.33% against 0.49-0.58%. With one page the two are
+  equal, 0.29-0.34% against 0.31-0.37%. The binary from before the
+  fix, run in the same session, used 0.82-0.89%, as C4 found. The
+  cost had been the 2-second check: Go decoded the key list one JSON
+  token at a time, and it rebuilt, serialised and hashed the whole
+  answer every time. One check took about 12 ms of CPU, 42 ms when it
+  read the cards; now about 3.3 ms and 9.5 ms
+  (`BenchmarkCheck`). No byte the desk sends changed: every golden
+  and tests/parity pass; the new JSON reader is fuzzed against the
+  old one.
+- **The rows not measured before**, Python then Go: tally today p50
+  2.75 and 2.80 ms; history p50 177 and 190 ms (+7%, same SQL;
+  Postgres's own time per query moved 180-216 ms in both); psql start
+  155 and 148 ms; whole check p50 7.41 and 4.40 ms; watching cost on
+  Postgres 0.96% and 0.93%, on LiteLLM 1.15% and 1.12%; keep-alive
+  requests a second 4,823 and 24,777 (a static file), 4,212 and
+  31,401 (a 304); 50 page loads at once, worst of 5 rounds, 162 and
+  23 ms, no stall; static files zipped in total 18,848 and 18,886
+  bytes (+0.2%).
+
+Two kinds of rows are counted elsewhere. Start-up and memory 5 s
+after start come from C4's A/B the same day; the fix does not touch
+start-up. The login flood and stalled-connection rows are G-4's
+security suite.
 
 ## G-8 Game
 
@@ -353,20 +477,18 @@ silicon Mac, Linux, an arm64 board): none of those machines is here.
 
 **passed here, in part** (the --docker live twin did not run here).
 Every difference the twin harness, the security, browser, game and
-live suites and mint-parity.sh found
-is in `tests/parity/ledger/*.md` with its test (the IDs above), or is
-an open problem said here (G-7's CPU, which is not allowed as a
-difference). C4's own: container.md (C-1 to C-7) and release.md (R-1
-to R-5). LiteLLM's real answers for every route of spec 7.9 were
-recorded (`tests/e2e/live/testdata/golden/captures.json`), and the
-fake matches them in status, error type and field names (17 steps).
-The live twin: both Front Desks on one real proxy gave equal states
-at a quiet point (209 cards, ids aside); a mint on either showed on
-itself at once and on the other within 10.1 s. Those were both host
-desks. **The live twin in --docker (both images side by side, spec
-16.5) did not run**: Python's side needs psycopg from PyPI, which
-this sandbox cannot reach. It can run in parity.yml or by hand where
-PyPI is reachable.
+live suites and mint-parity.sh found is in `tests/parity/ledger/*.md`
+with its test (the IDs above), or is an open problem said here. C4's
+own: container.md (C-1 to C-7) and release.md (R-1 to R-5). LiteLLM's
+real answers for every route of spec 7.9 were recorded
+(`tests/e2e/live/testdata/golden/captures.json`), and the fake matches
+them in status, error type and field names (17 steps). The live twin:
+both Front Desks on one real proxy gave equal states at a quiet point
+(209 cards, ids aside); a mint on either showed on itself at once and
+on the other within 10.1 s. Those were both host desks. **The live
+twin in --docker (both images side by side, spec 16.5) did not run**:
+Python's side needs psycopg from PyPI, which this sandbox cannot
+reach. It can run in parity.yml or by hand where PyPI is reachable.
 
 F1 added two ledger entries from verification, H-8 (a Host with
 spaces is read trimmed) and the non-ASCII Host in H-1, and widened
@@ -375,8 +497,8 @@ O-1 and P-3; see "After verification" above.
 ## For the sign-off
 
 The user reads the ledger (`tests/parity/ledger/`) and this file.
-Before that sign-off is useful: get CI and
-parity.yml green, fix or accept the CPU difference, measure the
-missing Appendix A rows, port and run the missing security scripts,
-run the browser scripts and the live twin against the images, and do
-the hand runs.
+Done since: CI and parity.yml green, the CPU difference fixed, every
+Appendix A row measured, the missing security scripts ported and
+run side by side, and the browser scripts run on the (stand-in)
+image. Left: the hand runs (MANUAL.md), and the --docker live twin
+where PyPI is reachable.
