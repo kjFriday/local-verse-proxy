@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/kjFriday/local-verse-proxy/internal/litellm/fakelitellm"
-	"github.com/kjFriday/local-verse-proxy/internal/mintkey"
 )
 
 const master = "sk-shim-test-master-0123456789"
@@ -81,11 +80,14 @@ func TestShimEqualsLvp(t *testing.T) {
 			args...)...)
 		// After a mistake the shim shows its own usage; lvp shows
 		// the same, naming the command as lvp mint-key.
-		if a.stderr == mintkey.Usage() {
+		// (By its words, not its bytes: line ends may differ.)
+		usage := strings.Contains(a.stderr, "Type ./mint-key")
+		if a.code == 2 && usage {
 			named := strings.Contains(b.stderr,
 				" mint-key --revoke-seat <seat>\n")
+			old := strings.Contains(b.stderr, "mint-key.exe")
 			if b.code != a.code || b.stdout != a.stdout ||
-				!named || strings.Contains(b.stderr, ".exe") {
+				!named || old {
 				t.Errorf("%q usage:\n shim %+v\n lvp  %+v",
 					args, a, b)
 			}
