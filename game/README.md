@@ -146,20 +146,10 @@ Day 3 done: bots worked 82 s, 342 calls answered.
 ## Try it: practice mode
 
 You need the proxy from the [main README](../README.md) working
-first (Steps 1 to 4). Practice mode needs no Ollama and no API key.
-The game needs Python 3.11 or newer:
-
-```sh
-python3 --version   # 3.11 or newer
-```
-
-Older? On Ubuntu 22.04, `sudo apt install python3.11`, then type
-`python3.11` where this guide says `python3`. On a Mac,
-`brew install python`.
-
-The game makes and cancels its seats' keys with `mint-key.sh`, so it
-also needs bash, curl and jq
-([main README, Step 1](../README.md#step-1-check-your-tools)).
+first (Steps 1 to 4), and `lvp` in the repo folder. Practice mode
+needs no Ollama and no API key. The game is part of `lvp`
+(`./lvp game`); it makes and cancels its seats' keys with
+`lvp mint-key`, so there is nothing else to install.
 
 **Heads up:** while practice mode is on, the proxy serves only the
 two fake practice models, to every seat, and real seats pay the
@@ -169,23 +159,24 @@ spare machine, or when nobody needs the real models.
 From the repo folder, run:
 
 ```sh
-echo 'COMPOSE_FILE=compose.yaml:game/compose.game.yaml' >> .env
-docker compose up -d --force-recreate proxy
-# the first time, it builds the practice server's image first (a
-# minute or two); then about 30 s. Still waiting after 5 min? Ctrl+C,
-# see below
-until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done
+./lvp game practice on
 docker compose ps
-python3 game/office.py setup
-python3 game/office.py run --days 2
-python3 game/office.py board
+./lvp game setup
+./lvp game run --days 2
+./lvp game board
 ```
 
-The first line tells Docker Compose to add the game's overlay file,
-`compose.game.yaml`, on top of `compose.yaml`. Your proxy now uses
-`game/config.game.yaml` and a fake model server, `fake-ollama`. If
-the `until` line never ends, see
-[Is it up?](../README.md#is-it-up) in the main README.
+(In PowerShell, type `.\lvp` for `./lvp`.)
+
+`practice on` adds three lines to `.env`, next to `compose.yaml`, so
+that Docker Compose adds the game's overlay file,
+`compose.game.yaml`, on top of `compose.yaml`. It then restarts the
+proxy, waits until it answers, and shows `docker compose ps`. Your
+proxy now uses `game/config.game.yaml` and a fake model server,
+`fake-ollama`. The first time, Docker builds the practice server's
+image first: a minute or two, and about 130 MB of downloads, once.
+If it gives up waiting, see [Is it up?](../README.md#is-it-up) in the
+main README.
 
 **Success:** `docker compose ps` shows three rows, `db`, `proxy` and
 `fake-ollama`, all `Up`. `fake-ollama` has no port: only the proxy
@@ -206,16 +197,21 @@ again.
 ### Back to normal
 
 ```sh
-python3 game/office.py reset
-sed -i.bak '/compose.game.yaml/d' .env && rm .env.bak
-docker compose up -d --force-recreate --remove-orphans proxy
+./lvp game reset
+./lvp game practice off
 ```
 
 `reset` revokes the game seats and wipes the game. If it cannot
-reach the proxy, it says so and wipes nothing. The `sed` line removes
-the line you added to `.env`, and `--remove-orphans` stops
-`fake-ollama`. Your real seats keep their keys; only the practice
-prices they paid stay on their budgets.
+reach the proxy, it says so and wipes nothing. `practice off` removes
+exactly the three lines `practice on` added to `.env`, and restarts
+the proxy with your own models; `fake-ollama` stops. Your real seats
+keep their keys; only the practice prices they paid stay on their
+budgets.
+
+Had your own `COMPOSE_FILE` line in `.env` already? Then
+`practice on` changes nothing and says how to add the game's file by
+hand. If you have a `compose.override.yaml`, list it in that line
+too: setting `COMPOSE_FILE` stops Docker reading it on its own.
 
 ## How a day works
 
@@ -281,7 +277,7 @@ beside it. It is there only to be compared with.
 To see where one seat's points came from, quest by quest:
 
 ```sh
-python3 game/office.py board --seat fern
+./lvp game board --seat fern
 ```
 
 A large quest pays a bit more per call than a small one (50 points
@@ -350,6 +346,8 @@ to be kind to them from the start.
   nothing.
 - **Read only.** The scorekeeper reads Postgres inside a `READ ONLY`
   transaction. It cannot change a budget or a key.
+- **The game never sees the master key:** it runs `lvp mint-key` for
+  that, as a separate program, which reads `seats.env` itself.
 
 **What stays in the proxy.** `reset` wipes the game, not the
 proxy's own records. `LiteLLM_SpendLogs` keeps a row per game call
@@ -414,33 +412,35 @@ hold every call the bots got an answer to (up to `flush_wait`).
 ## Files
 
 - `README.md`: this guide.
-- `office.py`: the game. `setup`, `run`, `board` (`--seat`,
-  `--day`), `reset`.
+- `lvp game` (the code is in `internal/game/`): the game. `setup`,
+  `run`, `board` (`--seat`, `--day`), `reset`, and `practice on` or
+  `off`.
 - `rules.toml`: every number the game uses.
 - `compose.game.yaml`: the overlay for practice mode.
 - `config.game.yaml`: the practice models and their prices.
-- `fake_ollama.py`: the fake model server, standard library only.
+- `lvp fake-ollama`: the fake model server. It runs inside Docker,
+  in Front Desk's image; you never start it yourself.
 - `keys/`: game seat keys, made by `setup`. Git ignores `*.key`.
 - `office.db`: the game's state (SQLite). Git ignores it.
+- `office.py` and `fake_ollama.py`: the old version, in Python,
+  removed soon. They play the same game on the same `office.db`.
 
 ## Troubleshooting
 
-- **`office.py needs Python 3.11 or newer`**: see
-  [Try it](#try-it-practice-mode) for how to get one.
 - **`cannot read the proxy database`**: run the commands from the
   repo folder, with the proxy running (`docker compose ps`).
-  `office.py` runs `docker` itself, so it cannot use `sudo`. If you
+  `lvp game` runs `docker` itself, so it cannot use `sudo`. If you
   need `sudo` for docker, add yourself to the `docker` group (main
   README,
   [Troubleshooting: setting up](../README.md#troubleshooting-setting-up)).
 - **`reset` says `could not revoke`**: nothing was wiped. If the
-  error is `curl: (7)`, the proxy is down: `docker compose up -d`,
-  then `reset` again. If it is `401`, seats.env changed after the
-  proxy started: see
+  error says `Failed to connect`, the proxy is down:
+  `docker compose up -d`, then `reset` again. If it is `401`,
+  seats.env changed after the proxy started: see
   [Troubleshooting: minting](../README.md#troubleshooting-minting) in
   the main README.
 - **`setup` fails with `already exists`**: a game seat is still
-  there from an earlier try. Run `python3 game/office.py reset`.
+  there from an earlier try. Run `./lvp game reset`.
 - **`no key in the proxy for: ...`**: game keys were revoked or
   expired (they last 8 days). `reset`, then `setup`.
 - **The day waits before it starts**: it starts on the clock, when
@@ -451,3 +451,7 @@ hold every call the bots got an answer to (up to `flush_wait`).
   `docker compose ps`.
 - **Your real seats get filler text**: practice mode is still on.
   See [Back to normal](#back-to-normal).
+- **Windows: `reset` says `game/office.db is in use by another
+  program`**: a running `lvp game run` or Front Desk has it open (it
+  waited 2 seconds for them first). Stop it, then run `reset` again.
+  The seats are revoked already; the second run finishes the wipe.

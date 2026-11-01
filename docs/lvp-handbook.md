@@ -6,9 +6,17 @@ It is a single file: no Python, bash, curl or jq needed.
 
 | Command       | What it does                                  |
 |---------------|-----------------------------------------------|
-| `mint-key`    | make or cancel one seat's key                 |
+| `init`        | make `seats.env`, with its secrets            |
+| `check`       | check the whole setup, step by step           |
+| `wait`        | wait until the proxy answers                  |
+| `test`        | the 3-check test, on a throwaway key          |
+| `mint`        | mint a seat key, and save it (`--save FILE`)  |
+| `revoke`      | revoke a seat key                             |
+| `env`         | set or unset a line in Compose's `.env`       |
 | `desk`        | Front Desk, the web page for key cards        |
-| `game`        | the office game: setup, run, board, reset     |
+| `game`        | the office game: practice, setup, run, board, |
+|               | reset                                         |
+| `mint-key`    | make or cancel one seat's key, for scripts    |
 | `fake-ollama` | the practice model server (Docker only)       |
 
 On Linux and macOS type `./lvp`; in PowerShell `.\lvp`; in cmd just
@@ -17,7 +25,7 @@ On Linux and macOS type `./lvp`; in PowerShell `.\lvp`; in cmd just
 Contents:
 
 - [Get it](#get-it)
-- [Before you start](#before-you-start)
+- [Set up and check](#set-up-and-check)
 - [Mint and revoke keys](#mint-and-revoke-keys)
 - [Front Desk](#front-desk)
 - [Front Desk in Docker](#front-desk-in-docker)
@@ -38,13 +46,52 @@ go build ./cmd/lvp
 That makes `lvp` (`lvp.exe` on Windows) next to `seats.env`. Build it
 in the repo's top folder, not inside `cmd/lvp`.
 
-## Before you start
+## Set up and check
 
-lvp talks to your proxy, so the README's Steps 1-4 come first: your
-`seats.env` holds the master key, and the proxy is up
-(`docker compose up -d`). lvp reads `seats.env` from `SEATS_ENV` if
-that is set, else from the folder you're in, else from the program's
-own folder. It never prints the master key.
+Run these in the repo folder, the one with `compose.yaml` (the
+README's Steps 3 to 6 say more):
+
+```text
+$ ./lvp init --ollama http://192.168.1.50:11434
+Made seats.env from seats.env.example. Only you may open it.
+Wrote new random values in LITELLM_MASTER_KEY, LITELLM_SALT_KEY,
+POSTGRES_PASSWORD, DATABASE_URL. They are not shown here; they stay in seats.env
+(README.md, 3a. The three secrets).
+Set OLLAMA_API_BASE=http://192.168.1.50:11434.
+Ollama answers there.
+Next: docker compose up -d, then ./lvp wait
+$ docker compose up -d
+$ ./lvp wait
+Waiting for the proxy at http://localhost:4000, up to 3m. A dot every 3 seconds:
+.........
+The proxy is up.
+$ ./lvp test
+Minted a test key for seat test-6a66ca: model local only, 1 dollar. It is
+revoked at the end.
+PASS  1. the key works: local answered.
+PASS  2. the wrong model is refused: claude got 403, not available for this key.
+PASS  3. a revoked key is refused: revoked, then 401.
+All three checks pass: your proxy works, and the test key is gone.
+```
+
+- `init` fills only the template's placeholders, so a second run
+  changes nothing. `--desk-password` adds a `FRONTDESK_PASSWORD`. It
+  will not write a new database password once Postgres has started
+  (`--force` does, if you must).
+- `check` prints `ok`, `FAIL` (with a `Fix:` line and the README
+  section) or `warn` for each step: the folder, `seats.env` (filled
+  in, yours only), Docker, `docker compose ps`, the proxy and its
+  master key, and Ollama.
+- `wait --timeout 5m` waits longer than the 3 minutes it waits by
+  default.
+- `test` runs the README's 3-check test on a seat `test-` and 6
+  random letters and digits, and always revokes it at the end.
+- `env set FRONTDESK_BIND=0.0.0.0`, `env unset NAME`, and plain `env`
+  to show `.env` (secret values hidden).
+
+lvp reads `seats.env` from `SEATS_ENV` if that is set, else from the
+folder you're in, else from the program's own folder. It never prints
+the master key, the salt key or a password.
 
 ## Mint and revoke keys
 
@@ -52,15 +99,16 @@ A seat is one person, computer or app. Minting gives it its own key,
 limited to some models and a budget, until it expires.
 
 ```text
-$ ./lvp mint-key alice
-sk-...fX3g
+$ ./lvp mint alice --save alice.key
+Saved the key for seat alice in alice.key; only you may open it. Give it to the
+seat privately (README.md, Step 7).
 ```
 
 That used the defaults from `seats.env` (for example: model `local`,
-$5, 30 days). Set them per key:
+$5, 30 days). Set them per key; without `--save`, it prints the key:
 
 ```text
-$ ./lvp mint-key bob --models local,pro --budget 2 --duration 7d
+$ ./lvp mint bob --models local,pro --budget 2 --duration 7d
 sk-...QgJQ
 ```
 
@@ -68,13 +116,17 @@ Add `--budget-duration 1d` (or `1w`, `1mo`) to refill the budget on a
 schedule instead of a lifetime total. To cancel:
 
 ```text
-$ ./lvp mint-key --revoke-seat bob
+$ ./lvp revoke bob
 revoked seat bob
-$ ./lvp mint-key --revoke sk-the-full-key
+$ ./lvp revoke --key-file alice.key
+revoked
+That key no longer works; alice.key may go now (delete it).
 ```
 
-`mint-key.sh` and the separate `mint-key` program still work the same
-way; lvp gives the same answers.
+`lvp mint-key` is the older form, for scripts: `./lvp mint-key alice`
+prints only the key, and `--revoke <key>` or `--revoke-seat <seat>`
+cancel. `mint-key.sh` and the separate `mint-key` program still work
+the same way; they all give the same answers.
 
 ## Front Desk
 
@@ -153,11 +205,15 @@ answers with a fake model server, so it costs nothing. Turn it on
 once, from the repo folder:
 
 ```sh
-echo 'COMPOSE_FILE=compose.yaml:game/compose.game.yaml' >> .env
-docker compose up -d --force-recreate proxy
+./lvp game practice on
 ```
 
-If you have a `compose.override.yaml`, list it too, as
+It adds three lines to `.env`, restarts the proxy, waits for it and
+shows `docker compose ps`. `./lvp game practice off` takes exactly
+those lines out again and restarts the proxy without the practice
+server. If `.env` already has a `COMPOSE_FILE` line of your own,
+`on` changes nothing and says how to add the game's file by hand. If
+you have a `compose.override.yaml`, list it in that line too, as
 `compose.yaml:compose.override.yaml:game/compose.game.yaml`: setting
 `COMPOSE_FILE` stops Docker reading it on its own.
 
@@ -170,6 +226,7 @@ Then play a week, one command at a time:
 ./lvp game board --day 1      # one day
 ./lvp game board --seat fern  # one seat, quest by quest
 ./lvp game reset              # end the week: revoke seats, wipe
+./lvp game practice off       # back to your own models
 ```
 
 Rules live in `game/rules.toml`; `--rules FILE` picks another. Game
@@ -199,23 +256,34 @@ wsl -d Ubuntu --cd ~/local-verse-proxy chmod +x lvp
 The last line marks it runnable: files written into WSL from Windows
 arrive without that mark.
 
-Mint and cancel:
+Check, mint and cancel:
 
 ```powershell
-wsl -d Ubuntu --cd ~/local-verse-proxy ./lvp mint-key laptop
-wsl -d Ubuntu --cd ~/local-verse-proxy ./lvp mint-key --revoke-seat laptop
+wsl -d Ubuntu --cd ~/local-verse-proxy ./lvp check
+wsl -d Ubuntu --cd ~/local-verse-proxy ./lvp mint laptop --save laptop.key
+wsl -d Ubuntu --cd ~/local-verse-proxy ./lvp revoke laptop
 ```
 
 Is the proxy reachable?
 
 ```powershell
-wsl -d Ubuntu -- curl -sS -m 5 "http://[::1]:4000/health/liveliness"
+wsl -d Ubuntu --cd ~/local-verse-proxy ./lvp wait --timeout 10s
 ```
 
-`"I'm alive!"` means yes. On some machines `127.0.0.1:4000` hangs
-inside WSL while `[::1]:4000` answers; then put
-`PROXY_URL=http://[::1]:4000` in `seats.env`. Only the minting tools
-read that line; Front Desk in Docker ignores it.
+`The proxy is up.` means yes. On some machines `127.0.0.1:4000` hangs
+inside WSL while `[::1]:4000` answers
+(`wsl -d Ubuntu -- curl -sS -m 5 "http://[::1]:4000/health/liveliness"`
+says `"I'm alive!"`). An lvp built from commit 84ab426 on reads
+`localhost` as curl does, `::1` first, then `127.0.0.1`, so
+`PROXY_URL=http://localhost:4000` in `seats.env` works there as it
+is. Only for `mint-key.sh`, or an older lvp, put
+`PROXY_URL=http://[::1]:4000` there instead. Only the minting tools
+(`mint`, `revoke`, `test`, `wait`, `check`, `mint-key`) read that
+line; Front Desk in Docker ignores it.
+
+GitHub's HTTPS clones in WSL (`git pull` above, if the repo lives
+there too) need a personal access token as the password, or Git
+Credential Manager; GitHub takes no account passwords.
 
 Edit `seats.env`:
 
@@ -227,7 +295,7 @@ notepad \\wsl.localhost\Ubuntu\home\<you>\local-verse-proxy\seats.env
 
 ```sh
 ./lvp help              # every command
-./lvp help mint-key     # one command
+./lvp help mint         # one command
 ./lvp desk --help
 ./lvp game run --help
 ./lvp version
@@ -235,12 +303,14 @@ notepad \\wsl.localhost\Ubuntu\home\<you>\local-verse-proxy\seats.env
 
 ## What's not done yet
 
-- lvp is on `main` and its tests pass on Linux, macOS and Windows,
-  but there's no release yet, and Gate A
-  ([tests/e2e/gate-a.md](../tests/e2e/gate-a.md)) isn't met.
-- The READMEs still show the Python commands
-  (`python3 game/office.py ...`, `python3 gui/frontdesk.py`). Each
-  has an lvp twin: `lvp game ...` and `lvp desk`. The Python tools
-  still work, and stay until the switch (Gate C).
-- `lvp init`, `check`, `wait`, `test`, `mint`, `revoke` and `env`
-  (beginner helpers) come in a later step and don't exist yet.
+- There's no release yet: build `lvp` from source (above) until the
+  first one.
+- Gate A ([tests/e2e/gate-a.md](../tests/e2e/gate-a.md)) isn't met
+  yet, and nobody has signed off parity.
+- The beginner helpers (`init`, `check`, `wait`, `test`, `mint`,
+  `revoke`, `env`, `game practice`) are built and tested, and the
+  READMEs now use them. Their commands still need a hand run on a
+  real Windows PC (PowerShell) and a Mac.
+- The Python tools (`gui/frontdesk.py`, `game/office.py`,
+  `game/fake_ollama.py`) are the old version, removed soon (Gate C,
+  after the user's go-ahead). They still work until then.

@@ -40,8 +40,11 @@ func TestHelpAndVersion(t *testing.T) {
 			t.Errorf("help does not list %s", name)
 		}
 	}
-	if strings.Contains(usage(), "  init ") {
-		t.Error("help lists C5's helpers before they are ready")
+	for _, name := range []string{"init", "check", "wait", "test",
+		"mint", "revoke", "env"} {
+		if !strings.Contains(usage(), "\n  "+name+" ") {
+			t.Errorf("help does not list the helper %s", name)
+		}
 	}
 	for _, a := range []string{"version", "--version"} {
 		if o, e, c := lvp(a); o != "lvp v9.9.9\n" || e != "" || c != 0 {
@@ -92,7 +95,7 @@ func TestMintKeyUsageFor(t *testing.T) {
 }
 
 func TestUnknown(t *testing.T) {
-	for _, a := range [][]string{{"bogus"}, {"init"}, {"help", "nope"},
+	for _, a := range [][]string{{"bogus"}, {"Init"}, {"help", "nope"},
 		{"Desk"}} {
 		o, e, c := lvp(a...)
 		if c != 2 || o != "" || !strings.Contains(e, "no command") ||
@@ -106,7 +109,11 @@ func TestCommandHelp(t *testing.T) {
 	// desk, game and fake-ollama are built: asked for help, each
 	// prints it on stdout and exits 0, and never starts serving.
 	for _, a := range [][]string{{"desk", "--help"},
-		{"game", "--help"}, {"fake-ollama", "--help"}} {
+		{"game", "--help"}, {"fake-ollama", "--help"},
+		{"init", "--help"}, {"check", "--help"}, {"wait", "--help"},
+		{"test", "--help"}, {"mint", "--help"}, {"revoke", "--help"},
+		{"env", "--help"}, {"game", "practice", "--help"},
+		{"help", "mint"}, {"help", "init"}} {
 		o, e, c := lvp(a...)
 		if c != 0 || e != "" || o == "" ||
 			strings.Contains(o, "not built yet") {

@@ -27,8 +27,8 @@ type command struct {
 var commands = []command{
 	{"desk", "Front Desk: the web page for key cards", frontdesk.Main,
 		false},
-	{"game", "the office game: setup, run, board, reset", runGame,
-		false},
+	{"game", "the office game: practice, setup, run, board, reset",
+		runGame, false},
 	{"mint-key", "mint or revoke a seat key, as the mint-key program",
 		runMintKey, false},
 	{"fake-ollama", "the practice model server (in Docker)",

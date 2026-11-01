@@ -5,15 +5,19 @@ It shows every key card, makes new ones, cancels old ones, and keeps
 the tally, live. It works in any browser: a phone, a tablet, or a
 Windows, Mac or Linux computer. Nothing to install on those.
 
-Front Desk is one small Python program. It runs on the proxy
-machine, next to `seats.env`, and serves one page. The easiest way to
-run it is in Docker, like the proxy: then the proxy machine needs
-nothing else, not even Python.
+Front Desk is part of `lvp`, one program
+([main README](../README.md#step-2-get-the-files)). It runs on the
+proxy machine, next to `seats.env`, and serves one page. The easiest
+way to run it is in Docker, like the proxy: then the proxy machine
+needs nothing else. Or run it on that computer with `./lvp desk`.
+
+(`frontdesk.py`, in this folder, is the old version, removed soon:
+the same Front Desk in Python. `lvp desk` replaces it.)
 
 ## Contents
 
 - [Run it in Docker](#run-it-in-docker), the easiest way
-- [Or run it with Python](#or-run-it-with-python)
+- [Or run it on this computer](#or-run-it-on-this-computer)
 - [What each screen does](#what-each-screen-does)
 - [Safety notes](#safety-notes)
 - [Troubleshooting](#troubleshooting)
@@ -35,8 +39,9 @@ A **profile** is a named group of optional containers in
 and Postgres; without it, `docker compose` leaves Front Desk out. The
 first time, Docker builds Front Desk's **image** (a ready-made
 program bundle) from the `Dockerfile` at the top of the repo. That
-takes a minute or two and downloads about 130 MB, mostly the tools to
-build it with.
+takes a minute or two and downloads about 130 MB, once, mostly the
+tools to build it with. The image itself holds only `lvp`, about
+14 MB.
 
 **Success:** the log ends with `Front Desk is open, in Docker.`, an
 address, a password and `Stop it with: ...`. Open
@@ -54,19 +59,19 @@ The password Front Desk makes is new each time it starts. To keep
 one, put it in `seats.env`. Run this once, in the repo folder:
 
 ```sh
-printf '\nFRONTDESK_PASSWORD=%s\n' "$(openssl rand -hex 12)" >> seats.env
-grep FRONTDESK_PASSWORD seats.env
+./lvp init --desk-password
 docker compose --profile frontdesk up -d
 ```
 
-The first line adds a random password of 24 letters and digits. The
-second shows it. The third starts Front Desk again with it. Your own
-password works too: 12 characters or more, and random, not words or
-names. Use only letters and digits, as the first line does, or put
-the whole password in single quotes (`'like this'`, with no `'`
-inside). Other characters, such as `$`, `#`, a space or a quote, can
-cut the password short for Docker, or stop `mint-key.sh` reading
-`seats.env` at all.
+The first line adds `FRONTDESK_PASSWORD`, a random password of 24
+letters and digits, to `seats.env` (if there is none yet), and
+changes nothing else. Open `seats.env` to see it (in Windows,
+`notepad seats.env`). The second line starts Front Desk again with
+it. Your own password works too: 12 characters or more, and random,
+not words or names. Use only letters and digits, or put the whole
+password in single quotes (`'like this'`, with no `'` inside). Other
+characters, such as `$`, `#`, a space or a quote, can cut the
+password short for Docker, or stop `lvp` reading `seats.env` at all.
 
 The `up` line restarts the proxy and its database as well, as after
 any `seats.env` edit, so seats get errors for about 30 seconds. To
@@ -79,12 +84,13 @@ and laptops on your network in, put one line in a file named `.env`,
 next to `compose.yaml`, then start Front Desk again:
 
 ```sh
-echo "FRONTDESK_BIND=0.0.0.0" >> .env
+./lvp env set FRONTDESK_BIND=0.0.0.0
 docker compose --profile frontdesk up -d
 ```
 
 `.env` is not `seats.env`: Docker Compose itself reads `.env`, to
-fill in `compose.yaml`. Only Front Desk restarts.
+fill in `compose.yaml`. `lvp env set` writes that one line and keeps
+the others. Only Front Desk restarts.
 
 Then on the phone, join the same Wi-Fi and open
 `http://<proxy-ip>:8040`, with the proxy machine's address
@@ -93,7 +99,8 @@ that it is plain http. Read the [safety notes](#safety-notes) first.
 
 ### More settings
 
-All optional. Put them in `.env`, one per line, then run
+All optional. Set each with `./lvp env set NAME=value` (it goes in
+`.env`; `./lvp env unset NAME` takes it out again), then run
 `docker compose --profile frontdesk up -d`:
 
 - `FRONTDESK_BIND=0.0.0.0`: let other devices in. The default,
@@ -111,15 +118,15 @@ All optional. Put them in `.env`, one per line, then run
 
 ### Mint keys through Docker
 
-The same image holds the Go `mint-key`
-([the Go version](../README.md#the-go-version)), so you can mint and
-revoke in the terminal with nothing else installed. It takes the
-same options as `./mint-key.sh`:
+The same image holds `lvp mint-key`
+([about it](../README.md#about-lvp-mint-key)), so you can mint and
+revoke in the terminal through Docker too. It takes the same options
+as `./lvp mint-key`, and prints only the key. On the proxy machine,
+`./lvp mint laptop --save laptop.key` is easier; this way is for when
+`lvp` is not at hand:
 
 ```sh
-key=$(docker compose run --rm --no-deps frontdesk mint-key laptop) \
-  && echo "$key" > laptop.key
-chmod 600 laptop.key
+docker compose run --rm --no-deps frontdesk mint-key laptop
 docker compose run --rm --no-deps frontdesk mint-key --revoke-seat laptop
 ```
 
@@ -129,12 +136,13 @@ they are, so start them first (`docker compose up -d`); without it,
 Compose may restart both if `seats.env` changed. Lines like
 `Container ... Running` come from Docker, not from `mint-key`. With
 Front Desk running, `docker compose exec frontdesk /lvp mint-key ...`
-does the same in it (`exec` needs the program's path: `/lvp`).
+does the same in it (`exec` needs the program's path: `/lvp`). The
+image has no shell, so `sh` and `bash` do not work there.
 
 A message that names `/app/seats.env` means your `seats.env`, next
 to `compose.yaml`: Compose passes its settings in, and
 `/app/seats.env` is an empty stand-in. Where the usage text says to
-type `./mint-key`, type
+type `lvp mint-key`, type
 `docker compose run --rm --no-deps frontdesk mint-key` here.
 
 ### Day to day in Docker
@@ -160,28 +168,24 @@ anew. Until then, Front Desk keeps the old settings, master key
 included.
 
 Front Desk makes a new password each time it starts, and the log
-keeps every one. Only the last `Password` line works. After a
-restart, on Linux or macOS,
-`docker compose logs frontdesk | grep Password | tail -1` shows it;
-elsewhere, run `docker compose logs frontdesk` and take the last
-`Password` line.
+keeps every one. Only the last `Password` line works: after a
+restart, run `docker compose logs frontdesk` and take the last
+`Password` line. (Or pick your own, as above.)
 
-## Or run it with Python
+## Or run it on this computer
 
 You need the proxy running first
 ([main README](../README.md#step-1-check-your-tools), Steps 1 to 4),
-and Python 3.11 or newer on the proxy machine. Check with
-`python3 --version`. This way, Front Desk runs `mint-key.sh`, so it
-also needs bash, curl and jq (main README, Step 1). Front Desk in
-Docker needs none of them. Then, in the repo folder:
+and `lvp` in the repo folder (Step 2 there). Then, in that folder:
 
 ```sh
-python3 gui/frontdesk.py
+./lvp desk
 ```
 
-**Success:** it prints `Front Desk is open.` and an address. Open
-`http://127.0.0.1:8040` in a browser on the proxy machine. Leave the
-terminal open; Ctrl+C stops Front Desk. The proxy keeps running.
+(In PowerShell, `.\lvp desk`.) **Success:** it prints
+`Front Desk is open.` and an address. Open `http://127.0.0.1:8040` in
+a browser on the proxy machine. Leave the terminal open; Ctrl+C stops
+Front Desk. The proxy keeps running.
 
 On its own, Front Desk listens only to the proxy machine itself, so
 nobody else on your network can open it. Anyone logged in to the
@@ -191,27 +195,38 @@ add `--login` to ask for a password there too.
 ### Open it from a phone
 
 ```sh
-python3 gui/frontdesk.py --lan
+./lvp desk --lan
 ```
 
 It prints three more lines: the address for your network, like
 `http://192.168.1.20:8040`, a reminder that the page is plain http,
 and a password, shown once. On the phone, join the same Wi-Fi, open
 that address, and type the password. You stay logged in for 12
-hours, on that device.
+hours, on that device. The first time, your firewall (Windows
+Defender, macOS) may ask whether `lvp` may accept connections: allow
+it on private networks only.
 
 With `--lan`, every device needs the password, the proxy machine
 included.
 
 To pick your own password instead, set it for that one run (12
 characters or more, and random: not words or names, since a device
-on your network can try about one a second):
+on your network can try about one a second). On Linux and macOS:
 
 ```sh
-FRONTDESK_PASSWORD='<your-password>' python3 gui/frontdesk.py --lan
+FRONTDESK_PASSWORD='<your-password>' ./lvp desk --lan
 ```
 
-Open it by the machine's IP address. To use a name instead, like
+In PowerShell, set it, run, then clear it again:
+
+```powershell
+$env:FRONTDESK_PASSWORD='<your-password>'
+.\lvp desk --lan
+Remove-Item Env:FRONTDESK_PASSWORD
+```
+
+Or keep one in `seats.env`, with `./lvp init --desk-password`. Open
+it by the machine's IP address. To use a name instead, like
 `http://office-pc:8040`, add `--host office-pc`. Other options:
 `--port 8041` for another port, and `--help` for the list.
 
@@ -243,7 +258,7 @@ don't cancel it.
 Desk asks the game which seats are its own. Their budget is the game's
 daily mana, so they refill often and are often waiting. In practice
 mode the proxy refills them within seconds of the time shown, not
-every 10 minutes. To remove them, run `python3 game/office.py reset`
+every 10 minutes. To remove them, run `./lvp game reset`
 on the proxy machine, when the game's week is over. Cancel card still
 works on them, with the same "are you sure?" step, but the game
 expects its seats until the reset.
@@ -254,9 +269,8 @@ address; if it is wrong, start Front Desk with
 `--seat-url http://<proxy-ip>:4000`. In Docker, put
 `FRONTDESK_SEAT_URL=http://<proxy-ip>:4000` in `.env` instead.
 
-**Cancel card** asks first, then cancels it at once, using
-`./mint-key.sh --revoke-seat` (in Docker, the Go `mint-key`, which
-works the same). A note takes the card's place for a
+**Cancel card** asks first, then cancels it at once, by seat name,
+as `./lvp revoke <seat>` does. A note takes the card's place for a
 few seconds. Apps using that card stop working; all other cards
 carry on. An expired card still holds its seat name, so cancel it to
 use the name again.
@@ -265,10 +279,9 @@ use the name again.
 
 Pick a seat name, the models it may use, a budget, a refill and how
 long it lasts, then **Make key card**. The defaults come from the
-`DEFAULT_` lines in `seats.env`. Front Desk runs `./mint-key.sh` (in
-Docker, `mint-key`) for you, so the rules are the same as in the
-terminal. A problem shows
-right under its field. `Sam` and `sam` count as the same seat. Names
+`DEFAULT_` lines in `seats.env`. Front Desk mints with the same
+rules as `./lvp mint` in the terminal. A problem shows right under
+its field. `Sam` and `sam` count as the same seat. Names
 that start with `game-` are kept for the office game.
 
 **Refill** says if the budget comes back:
@@ -280,7 +293,7 @@ that start with `game-` are kept for the office game.
   proxy's clock is UTC (world time, the same everywhere; each card
   shows its refill in your own time). Refills come soon after
   midnight UTC, on Mondays, or on the 1st of the month. This is
-  `./mint-key.sh --budget-duration` with `1d`, `1w` or `1mo`.
+  `./lvp mint --budget-duration` with `1d`, `1w` or `1mo`.
 
 The new key appears **once**, with the three things a seat needs:
 the key, the base URL and the model name. Use **Copy key** or
@@ -306,8 +319,11 @@ LiteLLM version. Every screen updates by itself; no need to reload.
 - **The master key never leaves the proxy machine.** Front Desk reads
   it from `seats.env` and uses it there. Pages get seat names,
   budgets and the tally, never the master key, and never a seat's
-  key after the one time it is shown. Error messages from
-  `mint-key.sh` are cleaned of anything that looks like a key.
+  key after the one time it is shown. Error messages from minting
+  are cleaned of anything that looks like a key.
+- **Its password stays with it.** In Docker, `FRONTDESK_PASSWORD`
+  from `seats.env` reaches only Front Desk's own container:
+  `compose.yaml` keeps it out of the proxy's and Postgres's.
 - **Plain http.** With `--lan`, or in Docker with
   `FRONTDESK_BIND=0.0.0.0`, the page and each new key cross your
   network unencrypted. Let other devices in only on a network you
@@ -351,8 +367,12 @@ LiteLLM version. Every screen updates by itself; no need to reload.
   if it made one.
 - **A locked-down container.** In Docker, Front Desk runs as a user
   with no special powers, cannot change its own files, and cannot
-  reach Docker itself. It sees the `game/` folder read-only (not the
-  game's keys) and never sees `seats.env` as a file. But Compose
+  reach Docker itself. It has no shell and no Python, only `lvp`. It
+  reads only `rules.toml` and `office.db` from `game/`, read-only; on
+  Linux, the game's keys folder is its owner's only (0700), which
+  keeps the keys from it. (With Docker Desktop on a Mac or Windows,
+  the container may see them too.) It never sees `seats.env` as a
+  file. But Compose
   passes it every setting in `seats.env`, as it does for the proxy:
   the master key, the database password and your provider keys. So
   guard it like `seats.env` itself. Anyone who may use Docker on the
@@ -360,9 +380,12 @@ LiteLLM version. Every screen updates by itself; no need to reload.
 
 ## Troubleshooting
 
-- **`python3: command not found`**, or `needs Python 3.11 or newer`:
-  on Ubuntu 22.04, `sudo apt install python3.11`, then run
-  `python3.11 gui/frontdesk.py`. On a Mac, `brew install python`.
+- **`cannot find compose.yaml`**: run `./lvp desk` in the repo
+  folder, the one that holds `compose.yaml`.
+- **A firewall asks** whether `lvp` may accept connections, with
+  `--lan` (Windows Defender, macOS): allow it on private networks
+  only. If you said no, the phone cannot reach the page: allow `lvp`
+  in the firewall settings.
 - **`missing .../seats.env`**: run it from the repo folder, after
   [Step 3](../README.md#step-3-make-your-secrets-file) of the main
   README.
@@ -427,8 +450,8 @@ LiteLLM version. Every screen updates by itself; no need to reload.
   `up` line again.
 - **`port is already allocated`** or **`address already in use`**,
   naming port 8040: something else uses it, perhaps Front Desk
-  started with Python. Stop that, or put `FRONTDESK_PORT=8041` in
-  `.env`.
+  started with `./lvp desk`. Stop that, or run
+  `./lvp env set FRONTDESK_PORT=8041`.
 - **`Failed to connect to the proxy at http://proxy:4000`** when
   minting through Docker: the proxy is starting, perhaps restarted
   by a `seats.env` edit. Wait 30 seconds and try again. If it says
@@ -448,7 +471,7 @@ seats, a year of made-up history, and chat traffic running.
   answer.
 - **Live, but light.** When the answer changes, each open page gets a
   one-line nudge (Server-Sent Events) and fetches the new answer,
-  zipped once for everyone. Under traffic that is about 6 MB an hour
+  zipped once for everyone. Under traffic that is about 4 MB an hour
   per open page, down from 45 MB when the whole answer was pushed
   each time. An idle page costs a few bytes every 15 s.
 - **Key cards every 10 seconds, your changes at once.** The card
@@ -456,8 +479,8 @@ seats, a year of made-up history, and chat traffic running.
   10 s. A card made or cancelled in Front Desk shows at once; one
   made in the terminal shows within 10 s.
 - **The tally is one small query.** Today's numbers are asked every
-  5 s, in about 6 ms; the days before only every 10 minutes. Asking
-  for all history every time took about 150 ms of database work.
+  5 s, in about 3 ms; the days before only every 10 minutes. Asking
+  for all history every time took about 190 ms of database work.
 - **psql is started once, not per question.** Starting
   `docker compose exec` costs about 150 ms each time; a psql kept
   open answers in a few ms. In Docker, Front Desk asks Postgres
@@ -470,13 +493,20 @@ seats, a year of made-up history, and chat traffic running.
 - **Small, compressed, cached.** The page, script and style are
   zipped once at start, about 18 KB in all, and the browser keeps
   them until they change.
-- **Standard library only.** Run with Python, it needs no packages;
-  it starts in about 0.1 s and uses about 30 MB of memory.
+- **One program, three small libraries.** `lvp` is written in Go,
+  with three libraries beyond Go's own: one reads `rules.toml`, one
+  talks to Postgres (in Docker), one reads the game's `office.db`.
+  It shows its first page about 20 ms after it starts, and uses
+  about 20 MB of memory with 20 pages open. Under 20 viewers a page
+  loads in about 7 ms.
 - **A small image.** The Docker image holds one Go program, `lvp`
   (Front Desk and `mint-key` in one file), the web's certificates and
   the program's third-party notices: about 14 MB, 6 MB compressed. No
   shell and no Python. Docker builds it in stages, so the tools it is
   built with stay out.
 
-Files: `frontdesk.py` is the program; `static/` holds the page.
-The `Dockerfile` at the top of the repo builds the Docker image.
+Files: `static/` holds the page; `embed.go` builds it into `lvp`;
+the code is in `internal/frontdesk/`. The `Dockerfile` at the top of
+the repo builds the Docker image. `frontdesk.py` and
+`requirements-docker.txt` are the old version, in Python, removed
+soon.
