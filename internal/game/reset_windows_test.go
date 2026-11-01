@@ -6,17 +6,26 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/kjFriday/local-verse-proxy/internal/gamestate"
 )
 
 // TestResetWhileOpen: on Windows, office.db held open by another
-// program (here with no sharing at all) cannot be removed. reset
+// program cannot be removed. The handle here shares reading and
+// writing but not deleting, as SQLite's own does in a running game
+// or Front Desk, so reset can read the file but not remove it. It
 // retries for 2 s, then says so plainly (ledger O-11).
 func TestResetWhileOpen(t *testing.T) {
 	root := rulesFolder(t)
 	db := filepath.Join(root, "game", "office.db")
-	os.WriteFile(db, nil, 0o644)
+	made, err := gamestate.Create(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	made.Close()
 	p, _ := syscall.UTF16PtrFromString(db)
-	h, err := syscall.CreateFile(p, syscall.GENERIC_READ, 0, nil,
+	h, err := syscall.CreateFile(p, syscall.GENERIC_READ,
+		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE, nil,
 		syscall.OPEN_EXISTING, syscall.FILE_ATTRIBUTE_NORMAL, 0)
 	if err != nil {
 		t.Fatal(err)

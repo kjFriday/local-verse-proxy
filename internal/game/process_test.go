@@ -32,6 +32,9 @@ func TestFlags(t *testing.T) {
 	top := "usage: lvp game [-h] [--rules FILE] {setup,run,board,reset} " +
 		"...\n"
 	missing := filepath.Join(root, "nope.toml")
+	// Python's message quotes the path with repr(): on Windows each
+	// backslash is doubled.
+	quoted := strings.ReplaceAll(missing, `\`, `\\`)
 	cases := []struct {
 		argv           []string
 		code           int
@@ -70,10 +73,10 @@ func TestFlags(t *testing.T) {
 			"arguments: --po\n"},
 		{[]string{"--rules", missing, "board"}, 1, "", "cannot read " +
 			missing + ": [Errno 2] No such file or directory: '" +
-			missing + "'\n"},
+			quoted + "'\n"},
 		{[]string{"board", "--rules", missing}, 1, "", "cannot read " +
 			missing + ": [Errno 2] No such file or directory: '" +
-			missing + "'\n"},
+			quoted + "'\n"},
 		{[]string{"board"}, 1, "", "no office yet: run `lvp game " +
 			"setup`\n"},
 	}
