@@ -180,6 +180,11 @@ func TestGoldenStart(t *testing.T) {
 		gotOut := maskOut(out.String(), port)
 		gotErr := strings.ReplaceAll(maskOut(errb.String(), port), tmp,
 			"<tmp>")
+		if runtime.GOOS == "windows" {
+			// The goldens come from Linux; on Windows the desk
+			// joins paths with \, as os.path.join does there.
+			gotErr = strings.ReplaceAll(gotErr, `\`, "/")
+		}
 		switch {
 		case c.Code == 2:
 			if code != 2 || errorLine(gotErr) != errorLine(
