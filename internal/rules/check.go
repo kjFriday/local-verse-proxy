@@ -96,8 +96,11 @@ func (c *checker) int(t map[string]any, path, key string) int {
 		return 0
 	}
 	n, ok := v.(int64)
-	if !ok || n > math.MaxInt32 || n < math.MinInt32 {
+	if !ok {
 		c.failf(path+"."+key, "must be a whole number")
+	} else if n > math.MaxInt32 || n < math.MinInt32 {
+		c.failf(path+"."+key, "must be a whole number from %d to %d",
+			math.MinInt32, math.MaxInt32)
 	}
 	return int(n)
 }
@@ -235,6 +238,7 @@ func (c *checker) rules(raw map[string]any) *Rules {
 			ParMana: c.num(t, p, "par_mana"),
 		}
 	}
+	c.sizes(r.Quests.Sizes)
 
 	s := c.table(raw, "score", "score")
 	r.Score.EffMin = c.num(s, "score", "eff_min")
@@ -256,6 +260,11 @@ func (c *checker) rules(raw map[string]any) *Rules {
 		p := "personas." + tomlKey(name)
 		t := c.table(ps, p, name)
 		chars := c.pair(t, p, "chars", true)
+		if c.err == nil && chars[0] > chars[1] {
+			// Python's randint stopped that bot mid-day.
+			c.failf(p+".chars", "must be [low, high], like "+
+				"[300, 700]")
+		}
 		var pe Persona
 		pe.Pro = c.num(t, p, "pro")
 		pe.Chars = [2]int{int(chars[0]), int(chars[1])}
@@ -295,6 +304,36 @@ func (c *checker) rules(raw map[string]any) *Rules {
 		return nil
 	}
 	return r
+}
+
+// sizes refuses what random.choices refused when the first quest
+// was drawn: no sizes, or weights that do not add up to a number
+// above 0. Python added them in sorted order, as Go does.
+func (c *checker) sizes(sizes map[string]Size) {
+	if c.err != nil {
+		return
+	}
+	if len(sizes) == 0 {
+		c.failf("quests.sizes", "must have at least one size, like "+
+			"[quests.sizes.small]")
+		return
+	}
+	names := make([]string, 0, len(sizes))
+	for n := range sizes {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	total := 0.0
+	for _, n := range names {
+		total += sizes[n].Weight
+	}
+	switch {
+	case total <= 0:
+		c.failf("quests.sizes", "weights must add up to more than 0")
+	case math.IsInf(total, 0) || math.IsNaN(total):
+		c.failf("quests.sizes", "weights must add up to a finite "+
+			"number")
+	}
 }
 
 // inFileOrder is t's keys in the order the file has them.

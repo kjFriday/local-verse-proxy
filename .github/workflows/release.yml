@@ -1,6 +1,10 @@
-# On a tag like v1.0.0: builds mint-key for six systems, packs each
-# with README.md and seats.env.example, and makes a GitHub release with
-# them and SHA256SUMS (a checksum for each file).
+# On a tag like v1.0.0: tests, then builds lvp (and, for this release,
+# the separate mint-key) for Windows, macOS and Linux, packs one
+# archive per system with the source tree and the third-party
+# notices, checks that packing again gives the same bytes, runs each
+# archive's lvp on its own kind of machine, and makes a draft GitHub
+# release with the archives and SHA256SUMS (a checksum for each). The
+# draft waits for you to publish it.
 #
 #   git tag v1.0.0 && git push origin v1.0.0
 name: release
@@ -10,54 +14,272 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write  # to make the release
+  contents: read
 
 # Each action is pinned to one exact commit (a tag can be moved; a
 # commit cannot). The comment names its version.
 
+env:
+  # One exact Go, the one in the Dockerfile, so a release can be built
+  # again the same way. Update both together.
+  GO_VERSION: "1.27.3"
+
 jobs:
-  release:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          # One exact Go, the one in gui/Dockerfile, so a release can
-          # be built again the same way. Update both together.
-          go-version: "1.26.10"
-      - name: Test
+          go-version: ${{ env.GO_VERSION }}
+      - name: go vet and go test
         run: go vet ./... && go test ./...
-      - name: Build and pack
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  # Linux and Windows programs, cross-built on Linux.
+  build-linux:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -eu
-          mkdir dist
-          for os in linux darwin windows; do
+          for os in linux windows; do
             for arch in amd64 arm64; do
-              name="mint-key-$TAG-$os-$arch"
-              exe=mint-key
-              if [ "$os" = windows ]; then exe=mint-key.exe; fi
-              mkdir "dist/$name"
-              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
-                -ldflags "-s -w -X main.version=$TAG" \
-                -o "dist/$name/$exe" ./cmd/mint-key
-              cp README.md seats.env.example "dist/$name/"
-              if [ "$os" = windows ]; then
-                (cd dist && zip -qr "$name.zip" "$name")
-              else
-                tar -C dist --owner=0 --group=0 -czf "dist/$name.tar.gz" \
-                  "$name"
-              fi
-              rm -r "dist/$name"
+              ext=
+              if [ "$os" = windows ]; then ext=.exe; fi
+              for cmd in lvp mint-key; do
+                CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build \
+                  -trimpath -ldflags "-s -w -X main.version=$TAG" \
+                  -o "bin/$os-$arch/$cmd$ext" "./cmd/$cmd"
+              done
             done
           done
-          (cd dist && sha256sum -- * > SHA256SUMS)
+          ls -lR bin
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bin-linux-windows
+          path: bin/
+          if-no-files-found: error
+
+  # The two macOS programs, joined into one that runs on Intel and
+  # Apple silicon Macs (a universal binary).
+  build-macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build and join
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            for cmd in lvp mint-key; do
+              CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build \
+                -trimpath -ldflags "-s -w -X main.version=$TAG" \
+                -o "bin/darwin-$arch/$cmd" "./cmd/$cmd"
+            done
+          done
+          mkdir -p bin/macos
+          for cmd in lvp mint-key; do
+            lipo -create -output "bin/macos/$cmd" \
+              "bin/darwin-amd64/$cmd" "bin/darwin-arm64/$cmd"
+            info="$(lipo -info "bin/macos/$cmd")"
+            echo "$info"
+            case "$info" in
+              *x86_64*arm64*|*arm64*x86_64*) ;;
+              *) echo "$cmd is not universal"; exit 1 ;;
+            esac
+          done
+          ./bin/macos/lvp version
+          ls -lR bin
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bin-macos
+          path: bin/
+          if-no-files-found: error
+
+  pack:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: bin/
+          merge-multiple: true
+      - name: Pack twice, compare
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          # Every file gets the tag's commit time, and archives list
+          # their files in one order with one owner, so packing again
+          # gives the same bytes.
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct "$TAG")"
+          export SOURCE_DATE_EPOCH TZ=UTC
+          chmod +x bin/*/*
+          # The notices list what each program links; the macOS one
+          # is read from its arm64 half (the same modules).
+          for t in linux-amd64 linux-arm64 windows-amd64 \
+              windows-arm64 darwin-arm64; do
+            exe=lvp
+            case "$t" in windows-*) exe=lvp.exe ;; esac
+            go run ./internal/notices -bin "bin/$t/$exe" \
+              > "bin/notices-$t.txt"
+          done
+          pack() {  # pack OUTDIR
+            local out=$1 t name dir abs
+            mkdir -p "$out"
+            abs="$(cd "$out" && pwd)"
+            for t in linux-amd64 linux-arm64 windows-amd64 \
+                windows-arm64 macos; do
+              name="local-verse-proxy-$TAG-$t"
+              dir="$RUNNER_TEMP/$out/$t/local-verse-proxy"
+              rm -rf "$RUNNER_TEMP/$out/$t"
+              mkdir -p "$dir"
+              # The source tree of the tag, but .github/ and tests/
+              # (.gitattributes: export-ignore).
+              git archive "$TAG" | tar -x -C "$dir"
+              if [ "$t" = macos ]; then
+                cp bin/macos/lvp bin/macos/mint-key "$dir/"
+                cp bin/notices-darwin-arm64.txt \
+                  "$dir/THIRD_PARTY_NOTICES.txt"
+              else
+                cp bin/$t/* "$dir/"
+                cp "bin/notices-$t.txt" "$dir/THIRD_PARTY_NOTICES.txt"
+              fi
+              chmod 755 "$dir"/lvp* "$dir"/mint-key*
+              find "$dir/.." -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+              case "$t" in
+                windows-*)
+                  (cd "$RUNNER_TEMP/$out/$t" \
+                    && find local-verse-proxy -print | LC_ALL=C sort \
+                    | zip -X -q -@ "$abs/$name.zip")
+                  ;;
+                *)
+                  tar -C "$RUNNER_TEMP/$out/$t" --sort=name \
+                    --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+                    --numeric-owner -cf - local-verse-proxy \
+                    | gzip -n -9 > "$out/$name.tar.gz"
+                  ;;
+              esac
+            done
+            (cd "$out" && sha256sum -- * > SHA256SUMS)
+          }
+          pack dist
+          pack again
+          if ! diff dist/SHA256SUMS again/SHA256SUMS; then
+            echo "Packing twice gave different archives."
+            exit 1
+          fi
           ls -l dist
-      - name: Make the release
+          cat dist/SHA256SUMS
+      - name: Pinned images still have amd64 and arm64
+        run: |
+          set -eu
+          for img in ghcr.io/berriai/litellm:v1.106.6 \
+              postgres:16-alpine golang:1.27.3-alpine3.24; do
+            p="$(docker buildx imagetools inspect "$img")"
+            for want in linux/amd64 linux/arm64; do
+              if ! printf '%s\n' "$p" | grep -q "Platform: *$want"; then
+                echo "$img lost $want"
+                exit 1
+              fi
+            done
+            echo "$img: amd64 and arm64"
+          done
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # Each archive, unpacked on its own kind of machine: lvp runs.
+  try:
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, file: linux-amd64.tar.gz}
+          - {os: ubuntu-24.04-arm, file: linux-arm64.tar.gz}
+          - {os: macos-latest, file: macos.tar.gz}
+          - {os: macos-15-intel, file: macos.tar.gz}
+          - {os: windows-latest, file: windows-amd64.zip}
+          - {os: windows-11-arm, file: windows-arm64.zip}
+    runs-on: ${{ matrix.os }}
+    steps:
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: dist
+          path: dist/
+      - name: Unpack and run
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          FILE: ${{ matrix.file }}
+        run: |
+          set -eu
+          f="dist/local-verse-proxy-$TAG-$FILE"
+          (cd dist && grep " ${f#dist/}\$" SHA256SUMS > one.sum \
+            && (sha256sum -c one.sum || shasum -a 256 -c one.sum))
+          mkdir out
+          case "$FILE" in
+            *.zip) unzip -q "$f" -d out ;;
+            *) tar -xzf "$f" -C out ;;
+          esac
+          cd out/local-verse-proxy
+          ls
+          test -f THIRD_PARTY_NOTICES.txt
+          test -f compose.yaml
+          test ! -e tests
+          test ! -e .github
+          exe=./lvp mk=./mint-key
+          if [ -f lvp.exe ]; then exe=./lvp.exe mk=./mint-key.exe; fi
+          got="$($exe version)"
+          echo "$got"
+          [ "$got" = "lvp $TAG" ]
+          $exe --help
+          [ "$($mk --version)" = "mint-key $TAG" ]
+          [ "$($exe mint-key --version)" = "mint-key $TAG" ]
+
+  publish:
+    needs: try
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # to make the release
+    steps:
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: dist
+          path: dist/
+      - name: Make the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" dist/* --verify-tag --title "$TAG" \
-            --generate-notes
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --draft --title "$TAG" --generate-notes

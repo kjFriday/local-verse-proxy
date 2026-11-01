@@ -921,9 +921,9 @@ network over plain HTTP.
   tally. It runs `mint-key.sh` for you (in Docker, the Go
   `mint-key`). See
   [gui/README.md](gui/README.md).
-- `gui/Dockerfile`: builds Front Desk's Docker image, with the Go
-  `mint-key` in it. `gui/requirements-docker.txt` lists the one
-  Python package the image adds, at an exact version.
+- `Dockerfile`: builds Front Desk's Docker image, which holds one Go
+  program, `lvp`, and nothing else (no Python). The practice model
+  server of the office game runs from the same image.
 - `compose.yaml`: runs the proxy and Postgres, with the database in
   the `pgdata` volume; with `--profile frontdesk`, Front Desk too.
 - `.env` (hidden, optional): settings for Docker Compose itself, such

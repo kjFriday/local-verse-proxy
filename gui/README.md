@@ -34,8 +34,9 @@ A **profile** is a named group of optional containers in
 `compose.yaml`. `--profile frontdesk` adds Front Desk to the proxy
 and Postgres; without it, `docker compose` leaves Front Desk out. The
 first time, Docker builds Front Desk's **image** (a ready-made
-program bundle) from `gui/Dockerfile`. That takes a minute or two
-and downloads about 130 MB, mostly the tools to build it with.
+program bundle) from the `Dockerfile` at the top of the repo. That
+takes a minute or two and downloads about 130 MB, mostly the tools to
+build it with.
 
 **Success:** the log ends with `Front Desk is open, in Docker.`, an
 address, a password and `Stop it with: ...`. Open
@@ -127,8 +128,8 @@ then removes it. `--no-deps` leaves the proxy and its database as
 they are, so start them first (`docker compose up -d`); without it,
 Compose may restart both if `seats.env` changed. Lines like
 `Container ... Running` come from Docker, not from `mint-key`. With
-Front Desk running, `docker compose exec frontdesk mint-key ...` does
-the same in it.
+Front Desk running, `docker compose exec frontdesk /lvp mint-key ...`
+does the same in it (`exec` needs the program's path: `/lvp`).
 
 A message that names `/app/seats.env` means your `seats.env`, next
 to `compose.yaml`: Compose passes its settings in, and
@@ -460,9 +461,8 @@ seats, a year of made-up history, and chat traffic running.
 - **psql is started once, not per question.** Starting
   `docker compose exec` costs about 150 ms each time; a psql kept
   open answers in a few ms. In Docker, Front Desk asks Postgres
-  directly instead, over one connection it keeps open, with psycopg
-  (a Python package for Postgres). The questions and the answers are
-  the same.
+  directly instead, over one connection it keeps open. The questions
+  and the answers are the same.
 - **Quick on phones.** Only the cards that changed are redrawn, and
   cards off screen are skipped: a busy update takes about 50 ms on a
   slow phone, down from about 220 ms. Each minute only the times on
@@ -472,13 +472,11 @@ seats, a year of made-up history, and chat traffic running.
   them until they change.
 - **Standard library only.** Run with Python, it needs no packages;
   it starts in about 0.1 s and uses about 30 MB of memory.
-- **A small image.** The Docker image is Python's own slim image
-  (179 MB) plus psycopg (23 MB), the Go `mint-key` (6 MB), the parts
-  of Python Front Desk uses, compiled ahead (6 MB), and Front Desk:
-  221 MB in all, 53 MB compressed. Docker builds it in stages, so the
-  tools it is built with stay out. Compiled ahead, it starts in about
-  0.1 s, as with Python; without, each start took half a second more.
+- **A small image.** The Docker image holds one Go program, `lvp`
+  (Front Desk and `mint-key` in one file), the web's certificates and
+  the program's third-party notices: about 14 MB, 6 MB compressed. No
+  shell and no Python. Docker builds it in stages, so the tools it is
+  built with stay out.
 
 Files: `frontdesk.py` is the program; `static/` holds the page.
-`Dockerfile` builds the Docker image, with the exact package
-versions in `requirements-docker.txt`.
+The `Dockerfile` at the top of the repo builds the Docker image.

@@ -100,23 +100,23 @@ func TestUnknown(t *testing.T) {
 	}
 }
 
-func TestStubs(t *testing.T) {
-	// Until their chunks land, each says so and fails; never panics.
-	// Asked for help, each says the same on stdout, and exits 0.
-	for _, a := range [][]string{{"desk"}, {"game", "board"},
-		{"game", "practice", "on"}, {"fake-ollama"}} {
+func TestCommandHelp(t *testing.T) {
+	// desk, game and fake-ollama are built: asked for help, each
+	// prints it on stdout and exits 0, and never starts serving.
+	for _, a := range [][]string{{"desk", "--help"},
+		{"game", "--help"}, {"fake-ollama", "--help"}} {
 		o, e, c := lvp(a...)
-		if c != 1 || o != "" || !strings.Contains(e, "not built yet") {
+		if c != 0 || e != "" || o == "" ||
+			strings.Contains(o, "not built yet") {
 			t.Errorf("%q: %q %q %d", a, o, e, c)
 		}
-		for _, line := range strings.Split(e, "\n") {
+		// The usage names the program as it was run; here that is
+		// the test binary's long path, so measure with lvp instead.
+		o = strings.ReplaceAll(o, args.Prog(), "lvp")
+		for _, line := range strings.Split(o, "\n") {
 			if len(line) > 80 {
 				t.Errorf("%q: a line over 80: %q", a, line)
 			}
-		}
-		o, e, c = lvp(a[0], "--help")
-		if c != 0 || e != "" || !strings.Contains(o, "not built yet") {
-			t.Errorf("%s --help: %q %q %d", a[0], o, e, c)
 		}
 	}
 }

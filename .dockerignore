@@ -1,4 +1,4 @@
-# What `docker build` may see of this folder. gui/Dockerfile copies
+# What `docker build` may see of this folder. The Dockerfile copies
 # only what it needs, but Docker sends it everything not listed here.
 # So: nothing at all, then only what the image is built from, then
 # never secrets or state, even inside those folders.

@@ -1,0 +1,146 @@
+# The proof that the Go port does what the Python files did, and the
+# Front Desk image's checks. Runs on every push and pull request until
+# the Python files go (spec Gate C), then this file goes too.
+#
+# parity: the twin harness (tests/parity): Python's and Go's Front
+#   Desk side by side in four modes, three runs in a row, plus
+#   fake-ollama; every difference must be listed in
+#   tests/parity/expected.json.
+# image: builds the Docker image for amd64 and arm64 and checks it.
+name: parity
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Each action is pinned to one exact commit (a tag can be moved; a
+# commit cannot). The comment names its version.
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: litellm
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: litellm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U litellm -d litellm"
+          --health-interval 2s --health-retries 30
+    env:
+      PARITY_PG_URL: >-
+        postgresql://litellm:ci-only-password@localhost:5432/litellm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+      - name: Python and psycopg
+        # The runner's Python 3.12; psycopg at the exact versions and
+        # hashes the old image used, in a venv of its own.
+        run: |
+          python3 --version
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet \
+            --disable-pip-version-check --require-hashes \
+            --only-binary :all: -r gui/requirements-docker.txt
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Tools Python's side needs
+        run: |
+          bash --version | head -1
+          curl --version | head -1
+          jq --version
+      - name: Seed the database
+        run: |
+          psql "$PARITY_PG_URL" -v ON_ERROR_STOP=1 \
+            -f internal/pgread/testdata/schema.sql
+      - name: Twin harness, three runs
+        env:
+          PARITY_RUNS: "3"
+          PARITY_OUT: ${{ runner.temp }}/parity.txt
+        run: go test -tags parity -count=1 -timeout 30m ./tests/parity/...
+      - name: The report
+        if: always()
+        run: cat "$RUNNER_TEMP/parity.txt" || true
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Secrets the build must never see
+        # Stand-ins with the names .dockerignore keeps out, so the
+        # check below proves it does.
+        run: |
+          echo "LITELLM_MASTER_KEY=sk-image-test" > seats.env
+          echo "X=1" > .env
+          echo "sk-image-test" > game/laptop.key
+          mkdir -p internal/x && echo k > internal/x/a.key
+          echo db > game/office.db
+          echo db > gui/office.db-wal
+          echo s > gui/seats.env.bak
+      - name: What the build context holds
+        run: |
+          set -eu
+          mkdir "$RUNNER_TEMP/ctx"
+          printf 'FROM scratch\nCOPY . /ctx\n' > "$RUNNER_TEMP/List"
+          docker buildx build -f "$RUNNER_TEMP/List" \
+            --output "type=local,dest=$RUNNER_TEMP/ctx" .
+          cd "$RUNNER_TEMP/ctx/ctx"
+          find . -type f | sort > "$RUNNER_TEMP/ctx.txt"
+          wc -l < "$RUNNER_TEMP/ctx.txt"
+          if grep -E '(^|/)(seats\.env|\.env$|[^/]*\.key$|office\.db)' \
+              "$RUNNER_TEMP/ctx.txt"; then
+            echo "The build context holds the files above."
+            exit 1
+          fi
+      - name: Build for amd64 and arm64
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            docker buildx build --platform "linux/$arch" --load \
+              --build-arg VERSION=ci -t "lvp-ci:$arch" .
+          done
+      - name: Check the images
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            img="lvp-ci:$arch"
+            user="$(docker image inspect -f '{{.Config.User}}' "$img")"
+            plat="$(docker image inspect -f '{{.Os}}/{{.Architecture}}' \
+              "$img")"
+            id="$(docker create "$img")"
+            # Its files, unpacked: the same number with either of
+            # Docker's image stores.
+            size="$(docker export "$id" | wc -c)"
+            echo "$img: $plat, user $user, $size bytes"
+            [ "$user" = "10001:10001" ]
+            [ "$plat" = "linux/$arch" ]
+            [ "$size" -lt 20000000 ]
+            docker export "$id" | tar -t | sort > "files-$arch.txt"
+            docker cp "$id:/app/seats.env" "seats-$arch.txt"
+            docker rm "$id" > /dev/null
+            cat "files-$arch.txt"
+            # The one seats.env is the empty stand-in.
+            grep -q '^# Empty on purpose' "seats-$arch.txt"
+            [ "$(wc -l < "seats-$arch.txt")" = 1 ]
+            if grep -E '(\.key$|office\.db|(^|/)\.env$|bin/sh|python)' \
+                "files-$arch.txt"; then
+              echo "The image holds the files above."
+              exit 1
+            fi
+            grep -qx 'THIRD_PARTY_NOTICES.txt' "files-$arch.txt"
+          done
+          # Runs here (amd64): read-only, no powers, no network.
+          docker run --rm --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --network none \
+            lvp-ci:amd64 version
+          docker run --rm --read-only --network none lvp-ci:amd64 \
+            mint-key --version
+          docker run --rm --network none lvp-ci:amd64 --help

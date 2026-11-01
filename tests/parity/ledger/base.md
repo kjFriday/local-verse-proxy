@@ -287,9 +287,15 @@ What    rules.Load checks every table and key the game uses, in
         for counts (max_attempts = 3.0, quests = 99.0, calls = 2.0,
         reply = 80.0), a bool for a count (per_seat = true counted
         as 1), a value that is not true or false for individuals or
-        stream ("false" as text was true; 0 was false), and
+        stream ("false" as text was true; 0 was false),
         office.models as text ("local" minted with --models
-        l,o,c,a,l).
+        l,o,c,a,l), and a count outside -2147483648..2147483647
+        (reply = 9223372036854775807 played a day; Go: "must be a
+        whole number from -2147483648 to 2147483647").
+        game.md's O-1 addendum lists three shapes that crashed Python
+        mid-run and are refused at load (empty quests.sizes, weights
+        not adding up to a finite number above 0, chars as [high,
+        low]).
 Why     Ruling, decision 20: a plain error with the line, not a
         traceback, and no quiet surprise from a wrong type.
 Safe    Stricter: each refusal names the key and its line, and says
@@ -299,7 +305,7 @@ Tests   internal/rules: TestLoadGolden (Python's answers from
         per-seat-float, chars-three, pause-text, daily-text,
         models-text, individuals-text, individuals-false-text,
         max-attempts-float, quests-float, calls-float, reply-float,
-        per-seat-bool, stream-int, ...)
+        per-seat-bool, stream-int, ...); TestUnplayableShapes
 ```
 
 ```text
@@ -455,7 +461,7 @@ Why     A help command should show help without a seats.env, in the
         words of the program it is asked about.
 Safe    `lvp mint-key` itself is byte-equal to the program.
 Tests   internal/cli: TestHelpAndVersion, TestMintKeyUsageFor,
-        TestStubs; cmd/mint-key: TestShimEqualsLvp
+        TestCommandHelp; cmd/mint-key: TestShimEqualsLvp
 ```
 
 ```text

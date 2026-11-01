@@ -1,0 +1,314 @@
+[
+ {
+  "name": "liveliness",
+  "method": "GET",
+  "path": "/health/liveliness",
+  "auth": "",
+  "status": 200,
+  "fields": [
+   "\u003cvalue\u003e"
+  ]
+ },
+ {
+  "name": "readiness",
+  "method": "GET",
+  "path": "/health/readiness/details",
+  "auth": "master",
+  "status": 200,
+  "fields": [
+   "cache",
+   "db",
+   "is_detailed_debug",
+   "litellm_version",
+   "log_level",
+   "show_env_credential_login_warning",
+   "show_no_redis_warning",
+   "status",
+   "success_callbacks",
+   "use_aiohttp_transport"
+  ]
+ },
+ {
+  "name": "readiness_nokey",
+  "method": "GET",
+  "path": "/health/readiness/details",
+  "auth": "",
+  "status": 401,
+  "error_type": "auth_error",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "models",
+  "method": "GET",
+  "path": "/v1/models",
+  "auth": "master",
+  "status": 200,
+  "fields": [
+   "data",
+   "object"
+  ]
+ },
+ {
+  "name": "key_list",
+  "method": "GET",
+  "path": "/key/list?return_full_object=true\u0026size=100\u0026page=1",
+  "auth": "master",
+  "status": 200,
+  "fields": [
+   "current_page",
+   "keys",
+   "total_count",
+   "total_pages"
+  ]
+ },
+ {
+  "name": "key_list_wrong",
+  "method": "GET",
+  "path": "/key/list",
+  "auth": "wrong",
+  "status": 401,
+  "error_type": "token_not_found_in_db",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "generate",
+  "method": "POST",
+  "path": "/key/generate",
+  "auth": "master",
+  "body": {
+   "key_alias": "{seat}",
+   "models": [
+    "local"
+   ],
+   "max_budget": 1,
+   "duration": "1h"
+  },
+  "status": 200,
+  "fields": [
+   "access_group_ids",
+   "agent_id",
+   "aliases",
+   "allowed_cache_controls",
+   "allowed_passthrough_routes",
+   "allowed_routes",
+   "allowed_vector_store_indexes",
+   "blocked",
+   "budget_duration",
+   "budget_fallbacks",
+   "budget_id",
+   "budget_limits",
+   "config",
+   "created_at",
+   "created_by",
+   "default_estimated_output_tokens",
+   "default_estimated_output_tokens_per_model",
+   "denied_passthrough_routes",
+   "disable_global_guardrails",
+   "duration",
+   "enable_prompt_caching",
+   "end_user_budget_id",
+   "enforced_params",
+   "expires",
+   "guardrails",
+   "key",
+   "key_alias",
+   "key_name",
+   "key_type",
+   "litellm_budget_table",
+   "max_budget",
+   "max_parallel_requests",
+   "mcp_rpm_limit",
+   "metadata",
+   "model_max_budget",
+   "model_rpm_limit",
+   "model_tpm_limit",
+   "models",
+   "object_permission",
+   "organization_id",
+   "permissions",
+   "policies",
+   "project_id",
+   "prompts",
+   "router_settings",
+   "rpm_limit",
+   "rpm_limit_type",
+   "spend",
+   "tag_rpm_limit",
+   "tags",
+   "team_id",
+   "throttle_on_budget_exceeded",
+   "token",
+   "token_id",
+   "tpd_limit",
+   "tpm_limit",
+   "tpm_limit_type",
+   "updated_at",
+   "updated_by",
+   "user_id"
+  ]
+ },
+ {
+  "name": "generate_taken",
+  "method": "POST",
+  "path": "/key/generate",
+  "auth": "master",
+  "body": {
+   "key_alias": "{seat}",
+   "models": [
+    "local"
+   ]
+  },
+  "status": 400,
+  "error_type": "bad_request_error",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "generate_wrong",
+  "method": "POST",
+  "path": "/key/generate",
+  "auth": "wrong",
+  "body": {
+   "key_alias": "x"
+  },
+  "status": 401,
+  "error_type": "token_not_found_in_db",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "key_list_alias",
+  "method": "GET",
+  "path": "/key/list?return_full_object=true\u0026key_alias={seat}",
+  "auth": "master",
+  "status": 200,
+  "fields": [
+   "current_page",
+   "keys",
+   "total_count",
+   "total_pages"
+  ]
+ },
+ {
+  "name": "chat",
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "auth": "seat",
+  "body": {
+   "model": "local",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ]
+  },
+  "status": 200,
+  "fields": [
+   "choices",
+   "created",
+   "id",
+   "model",
+   "object",
+   "usage"
+  ]
+ },
+ {
+  "name": "chat_model_refused",
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "auth": "seat",
+  "body": {
+   "model": "nope",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ]
+  },
+  "status": 403,
+  "error_type": "key_model_access_denied",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "daily_activity",
+  "method": "GET",
+  "path": "/user/daily/activity?start_date=2026-11-01\u0026end_date=2026-11-01\u0026page_size=1000",
+  "auth": "master",
+  "status": 200,
+  "fields": [
+   "metadata",
+   "results"
+  ]
+ },
+ {
+  "name": "delete",
+  "method": "POST",
+  "path": "/key/delete",
+  "auth": "master",
+  "body": {
+   "key_aliases": [
+    "{seat}"
+   ]
+  },
+  "status": 200,
+  "fields": [
+   "deleted_keys"
+  ]
+ },
+ {
+  "name": "delete_none",
+  "method": "POST",
+  "path": "/key/delete",
+  "auth": "master",
+  "body": {
+   "key_aliases": [
+    "{seat}"
+   ]
+  },
+  "status": 404,
+  "error_type": "internal_server_error",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "chat_deleted",
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "auth": "seat",
+  "body": {
+   "model": "local",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ]
+  },
+  "status": 401,
+  "error_type": "token_not_found_in_db",
+  "fields": [
+   "error"
+  ]
+ },
+ {
+  "name": "unknown",
+  "method": "GET",
+  "path": "/no/such/path",
+  "auth": "master",
+  "status": 404,
+  "fields": [
+   "detail"
+  ]
+ }
+]

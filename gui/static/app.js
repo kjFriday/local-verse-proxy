@@ -217,6 +217,7 @@ async function boot() {
   }
   $("#plain-http").hidden = !s.lan;
   needLogin = s.need_login;
+  resetCmd = s.reset_cmd || RESET;
   if (s.docker) dockerHints();
   if (!s.csrf) return showLogin();
   csrf = s.csrf;
@@ -548,6 +549,7 @@ const STATES = {
 // Seats the office game made. Front Desk asks the game which ones.
 const isGame = (c) => c.game === true;
 const RESET = "python3 game/office.py reset";
+let resetCmd = RESET;
 
 // What to do about a card that stopped working.
 const HINTS = {
@@ -609,7 +611,7 @@ function cardView(c) {
   }
   if (isGame(c)) {
     el.append(h("p", { class: "small" }, "The office game made it. " +
-      "To remove all game seats, run ", h("code", { text: RESET }), "."));
+      "To remove all game seats, run ", h("code", { text: resetCmd }), "."));
   }
   if (confirming === c.id) el.append(confirmView(c, name));
   else {
@@ -655,7 +657,7 @@ function confirmView(c, name) {
     h("p", { text: "Cancel the key card for " + name + "? Apps using " +
       "it stop working at once. This can't be undone." }),
     isGame(c) && h("p", {}, "The game still counts on this seat. To " +
-      "end the game, run ", h("code", { text: RESET }), " instead."),
+      "end the game, run ", h("code", { text: resetCmd }), " instead."),
     h("div", { class: "actions" }, yes,
       h("button", { type: "button", class: "keep", text: "Keep it",
         onclick: () => {

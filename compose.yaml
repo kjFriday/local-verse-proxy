@@ -13,6 +13,10 @@ services:
     image: ghcr.io/berriai/litellm:${LITELLM_TAG:-v1.106.6}
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     env_file: seats.env
+    environment:
+      # Front Desk's password stays out of LiteLLM's and Postgres's
+      # containers: this empty value beats the one in seats.env.
+      FRONTDESK_PASSWORD: ""
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     ports:
@@ -28,6 +32,8 @@ services:
     environment:
       POSTGRES_USER: litellm
       POSTGRES_DB: litellm
+      # As for the proxy: Front Desk's password stays out of here.
+      FRONTDESK_PASSWORD: ""
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -36,15 +42,16 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Front Desk, built from gui/Dockerfile. Optional: only a command
-  # with --profile frontdesk starts it. Its password, if you pick one,
+  # Front Desk, built from the Dockerfile next to this file: one Go
+  # program, lvp, and nothing else. Optional: only a command with
+  # --profile frontdesk starts it. Its password, if you pick one,
   # goes in seats.env as FRONTDESK_PASSWORD. The FRONTDESK_ settings
   # below come from your shell or .env, like LITELLM_TAG.
   frontdesk:
     profiles: ["frontdesk"]
     build:
       context: .
-      dockerfile: gui/Dockerfile
+      dockerfile: Dockerfile
     env_file: seats.env
     environment:
       # Inside Docker the proxy is "proxy", not localhost. These win

@@ -1,0 +1,30 @@
+{
+  "about": [
+    "Every case of the twin harness (twin_test.go) that may differ",
+    "between Python and Go, with the ledger entries that say why. A",
+    "name alone covers every mode; mode/name covers one mode; a name",
+    "that ends in * covers every case it starts. A difference not",
+    "listed here fails the run."
+  ],
+  "cases": {
+    "session reset_cmd": ["F-6"],
+    "host user@127.0.0.1:{PORT}": ["H-3"],
+    "host 127.0.0.1:{PORT} \t": ["H-8"],
+    "host 127.0.0.1:{PORT}\u0131": ["H-1"],
+    "host absent HTTP/1.0": ["H-5"],
+    "host absent HTTP/1.1": ["H-1"],
+    "content-length -1": ["H-1"],
+    "content-length abc": ["H-1"],
+    "body nan": ["H-6"],
+    "body utf16": ["H-6"],
+    "if-none-match /": ["H-7"],
+    "if-none-match /index.html": ["H-7"],
+    "if-none-match /app.js": ["H-7"],
+    "if-none-match /app.css": ["H-7"],
+    "if-none-match /icon.svg": ["H-7"],
+    "if-none-match /api/state": ["H-7"],
+    "sse first events": ["F-24"],
+    "log mint-key said: Is it running? Check with: *": ["F-3", "F-11"],
+    "log mint-key.sh said: curl: (7) Failed to connect *": ["F-3", "F-11"]
+  }
+}

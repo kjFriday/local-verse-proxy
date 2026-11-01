@@ -1,6 +1,7 @@
-# What the Docker image adds to Python (gui/Dockerfile): psycopg, so
-# Front Desk can read the tally from Postgres without psql. Run on the
-# host, Front Desk needs none of this.
+# psycopg, for gui/frontdesk.py --docker, so the Python Front Desk can
+# read the tally from Postgres without psql. The image is Go now; this
+# stays for .github/workflows/parity.yml's twin harness until Gate C.
+# Run on the host, Front Desk needs none of this.
 #
 # Exact versions, and a sha256 hash (a fingerprint) of each file, so
 # pip installs these files and nothing else. psycopg-binary has one

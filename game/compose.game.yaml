@@ -26,11 +26,17 @@ services:
       fake-ollama:
         condition: service_started
 
-  # Practice model server. No ports: only the proxy reaches it, over
-  # the compose network.
+  # Practice model server: the same Go image as Front Desk (the
+  # Dockerfile at the top of the repo), running `lvp fake-ollama`. The
+  # first `up` builds it, once. No ports: only the proxy reaches it,
+  # over the compose network.
   fake-ollama:
-    image: python:3.12-slim
-    command: ["python", "-u", "/srv/fake_ollama.py"]
-    volumes:
-      - ./game/fake_ollama.py:/srv/fake_ollama.py:ro
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["fake-ollama"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped

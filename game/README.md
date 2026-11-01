@@ -171,7 +171,9 @@ From the repo folder, run:
 ```sh
 echo 'COMPOSE_FILE=compose.yaml:game/compose.game.yaml' >> .env
 docker compose up -d --force-recreate proxy
-# about 30 s; still waiting after 3 min? Ctrl+C, see below
+# the first time, it builds the practice server's image first (a
+# minute or two); then about 30 s. Still waiting after 5 min? Ctrl+C,
+# see below
 until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done
 docker compose ps
 python3 game/office.py setup

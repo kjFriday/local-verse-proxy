@@ -3,9 +3,15 @@
 # against a real, running proxy, over a table of cases, and compares
 # what each prints (stdout, stderr) and its exit code. For each key
 # made, it also asks the proxy what the key allows, and compares that.
-# Then it checks that Front Desk and the office game read both alike.
+# Then it checks that Front Desk and the office game read both alike,
+# and that Go's Front Desk and office game (lvp) say what Python's do
+# (go run ./tests/parity/callers).
 #
 #   tests/mint-parity.sh [path/to/go/mint-key]
+#
+# The path may be the mint-key program or a two-line wrapper that runs
+# `lvp mint-key "$@"`. LVP names the lvp to test the callers with;
+# without it, it is built (Go needed).
 #
 # Run it on the proxy machine, with the proxy up and seats.env filled
 # in. It needs bash, curl, jq and python3 (3.11 or newer); with no
@@ -259,7 +265,8 @@ check differs crlf none SEAT --budget 1
 
 # --- Callers: Front Desk and the office game -------------------------
 echo "-- callers"
-seats+=("parity-$$-desk" "parity-$$-game")
+seats+=("parity-$$-desk" "parity-$$-game" "parity-$$-g-g1"
+  "parity-$$-desk2")
 python3 - "$sh" "$go_bin" "$tmp" "$env_main" "$$" <<'PY' || fails=$((fails+1))
 import subprocess, sys, types
 from pathlib import Path
@@ -325,6 +332,16 @@ for name, fn in (("Front Desk", desk), ("office game", game)):
                   "" if wrong else "(known: clearer)")
 sys.exit(1 if fails else 0)
 PY
+
+echo "-- callers, Go (lvp desk and lvp game)"
+lvp="${LVP:-}"
+[[ -z "$lvp" || "$lvp" == /* ]] || lvp="$PWD/$lvp"
+if [[ -z "$lvp" ]]; then
+  lvp="$tmp/lvp"
+  go build -o "$lvp" ./cmd/lvp || fails=$((fails+1))
+fi
+go run ./tests/parity/callers "$lvp" "$tmp" "$env_main" "$$" \
+  || fails=$((fails+1))
 
 echo "-- $n cases: $((n - fails - known)) same, $known known" \
   "differences, $fails failed"
