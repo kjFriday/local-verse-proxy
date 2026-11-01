@@ -24,7 +24,7 @@ desk` on 8023 and Python `gui/frontdesk.py` on 8123. Torn down after
 
 | Gate | What | Result |
 |------|------|--------|
-| G-1  | CI green | CI only, not run here; and `internal/cli` fails |
+| G-1  | CI green | passed in CI (ci and parity, ce72611) |
 | G-2  | Every golden suite | passed here |
 | G-3  | Twin harness, 3 runs, 4 modes | passed here, in part (no --docker) |
 | G-4  | Security suite as Python's | passed here, in part (12 not run) |
@@ -38,11 +38,10 @@ desk` on 8023 and Python `gui/frontdesk.py` on 8123. Torn down after
 | G-12 | Hand runs (MANUAL.md) | not done |
 | G-13 | Ledger complete | passed here, in part (no --docker twin) |
 
-Gate A is **not** met: G-1 (CI not run yet), G-4
-(scripts not ported), G-6 (scripts not run against the image), G-7
-(Front Desk CPU, and rows not measured) and G-12 (hand runs) are
-open, and parts of G-3, G-9, G-10 and G-13 run only in CI or where
-PyPI is reachable.
+Gate A is **not** met: G-4 (scripts not ported), G-6 (scripts not run
+against the image), G-7 (Front Desk CPU, and rows not measured) and
+G-12 (hand runs) are open, and parts of G-3, G-9, G-10 and G-13 run
+only in CI or where PyPI is reachable.
 
 ## After verification (fix round F1)
 
@@ -80,8 +79,10 @@ Then the lead (fix round F2):
 
 ## G-1 CI green
 
-**CI only, not run here** (no Actions runner). What ran here, on this
-tree:
+**passed in CI** on ce72611: ci (14 jobs: six systems with Go 1.26
+and 1.27, checks with -race, pg) and parity (twin harness, image).
+It took four fix rounds after the C2-C4 commit, all in tests but
+one (the desk's tally flag, frontdesk.md F-13). What ran here too:
 
 - `gofmt -l .`: empty. `go vet ./...` for linux, windows, darwin: ok;
   also with `-tags e2e` and `-tags parity` for tests/.
