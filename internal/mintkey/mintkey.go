@@ -61,6 +61,10 @@ type System struct {
 	Getwd   func() (string, error)
 	Exe     func() (string, error)
 	Timeout time.Duration
+	// Cmd is how the user typed this command, such as "./lvp
+	// mint-key": after a mistake, the usage then names it so (as
+	// UsageFor). Empty keeps the mint-key program's own words.
+	Cmd string
 }
 
 // OS is the real computer.
@@ -112,6 +116,10 @@ func Main(args []string, sys System, stdout, stderr io.Writer) int {
 	r := run(context.Background(), args, func() (*seats.File, *stop) {
 		return load(sys)
 	}, sys.Env, sys.Timeout)
+	if sys.Cmd != "" && r.Code == 2 &&
+		strings.TrimSpace(r.Stderr) == strings.TrimSpace(usageText) {
+		r.Stderr = UsageFor(sys.Cmd)
+	}
 	io.WriteString(stdout, r.Stdout)
 	io.WriteString(stderr, r.Stderr)
 	return r.Code

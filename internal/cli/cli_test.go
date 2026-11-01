@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -118,5 +120,39 @@ func TestCommandHelp(t *testing.T) {
 				t.Errorf("%q: a line over 80: %q", a, line)
 			}
 		}
+	}
+}
+
+// TestMintFlagHint: one of mint-key's options typed straight after
+// lvp gets the line with mint-key put in.
+func TestMintFlagHint(t *testing.T) {
+	_, e, c := lvp("--revoke-seat", "test2")
+	want := "Did you mean: " + args.Prog() +
+		" mint-key --revoke-seat test2\n"
+	if c != 2 || !strings.HasSuffix(e, want) {
+		t.Errorf("%q %d", e, c)
+	}
+	_, e, _ = lvp("--models", "a b")
+	if !strings.HasSuffix(e, " mint-key --models ...\n") {
+		t.Errorf("spaces: %q", e)
+	}
+	_, e, _ = lvp("bogus")
+	if strings.Contains(e, "Did you mean") {
+		t.Errorf("bogus: %q", e)
+	}
+}
+
+// TestMintKeyUsageNamesLvp: after a mistake, lvp mint-key shows its
+// usage as lvp types it, not the mint-key program's.
+func TestMintKeyUsageNamesLvp(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, "seats.env")
+	os.WriteFile(env, []byte("LITELLM_MASTER_KEY=sk-test-usage-0001\n"+
+		"PROXY_URL=http://127.0.0.1:9\n"), 0o600)
+	t.Setenv("SEATS_ENV", env)
+	_, e, c := lvp("mint-key", "test2", "--revoke-seat", "test2")
+	if c != 2 || e != mintkey.UsageFor(args.Prog()+" mint-key") ||
+		strings.Contains(e, "mint-key.exe") {
+		t.Errorf("%d %q", c, e)
 	}
 }

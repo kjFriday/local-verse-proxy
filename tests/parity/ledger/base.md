@@ -452,16 +452,23 @@ What    `lvp help mint-key` prints mint-key's usage on standard output
         <seat> ..."), without the mint-key program's "Type
         ./mint-key ..." line. The mint-key program prints its own
         usage on standard error with exit 2, and only once it has
-        found seats.env; `lvp mint-key --help` still does exactly
-        that. `lvp help version` and `lvp help help` say what those
-        do, exit 0; until C2 and C3, `lvp help desk` (and game,
-        fake-ollama) prints the stub's line on standard output, exit
-        0.
-Why     A help command should show help without a seats.env, in the
-        words of the program it is asked about.
-Safe    `lvp mint-key` itself is byte-equal to the program.
+        found seats.env. `lvp mint-key` after a mistake (--help,
+        a wrong option) prints that same usage, on standard error
+        with exit 2, but typed as lvp is typed, as `lvp help
+        mint-key` does: the program's "Type ./mint-key ..." line
+        named a mint-key.exe that a user of lvp does not have. One
+        of mint-key's options typed straight after lvp (`lvp
+        --revoke-seat x`) adds "Did you mean: lvp mint-key
+        --revoke-seat x" under the no-command line. `lvp help
+        version` and `lvp help help` say what those do, exit 0.
+Why     Help and usage should be in the words of the program the
+        user typed, and show help without a seats.env.
+Safe    Everything else `lvp mint-key` prints, and every request,
+        is byte-equal to the program; the mint-key program keeps
+        its own words.
 Tests   internal/cli: TestHelpAndVersion, TestMintKeyUsageFor,
-        TestCommandHelp; cmd/mint-key: TestShimEqualsLvp
+        TestCommandHelp, TestMintFlagHint, TestMintKeyUsageNamesLvp;
+        cmd/mint-key: TestShimEqualsLvp
 ```
 
 ```text

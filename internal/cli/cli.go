@@ -76,8 +76,14 @@ func run(argv []string, v string, std args.Std) int {
 	if c := find(argv[0]); c != nil {
 		return c.run(argv[1:], std)
 	}
-	return unknown(std, argv[0])
+	return unknown(std, argv[0], argv)
 }
+
+// mintFlags are mint-key's options: typed straight after lvp, they
+// mean mint-key was left out.
+var mintFlags = map[string]bool{"--revoke": true, "--revoke-seat": true,
+	"--models": true, "--budget": true, "--duration": true,
+	"--budget-duration": true}
 
 // help is `lvp help <name>`: the command's own help, on stdout.
 func help(name string, std args.Std) int {
@@ -100,7 +106,7 @@ func help(name string, std args.Std) int {
 	if c := find(name); c != nil {
 		return c.run([]string{"--help"}, std)
 	}
-	return unknown(std, name)
+	return unknown(std, name, nil)
 }
 
 func find(name string) *command {
@@ -113,9 +119,19 @@ func find(name string) *command {
 	return nil
 }
 
-func unknown(std args.Std, name string) int {
+// unknown says name is no command. When argv starts with one of
+// mint-key's options, it also shows the line with mint-key put in.
+func unknown(std args.Std, name string, argv []string) int {
+	prog := args.Prog()
 	fmt.Fprintf(std.Err, "%s: no command %q. To see them all, run: "+
-		"%s help\n", Name, name, args.Prog())
+		"%s help\n", Name, name, prog)
+	if len(argv) > 0 && mintFlags[argv[0]] {
+		line := prog + " mint-key " + strings.Join(argv, " ")
+		if strings.ContainsAny(strings.Join(argv, ""), " \t\"'") {
+			line = prog + " mint-key " + argv[0] + " ..."
+		}
+		fmt.Fprintf(std.Err, "Did you mean: %s\n", line)
+	}
 	return 2
 }
 
@@ -127,7 +143,9 @@ func runGame(argv []string, std args.Std) int {
 }
 
 func runMintKey(argv []string, std args.Std) int {
-	return mintkey.Main(argv, mintkey.OS(), std.Out, std.Err)
+	sys := mintkey.OS()
+	sys.Cmd = args.Prog() + " mint-key"
+	return mintkey.Main(argv, sys, std.Out, std.Err)
 }
 
 func usage() string {
