@@ -56,6 +56,13 @@ type DB struct {
 	db *sql.DB
 }
 
+// NoSync, set only by tests, opens files with synchronous=OFF:
+// SQLite then does not wait for the disk after each commit. What the
+// file holds is the same; only a power cut could lose the last
+// writes. Windows runners take seconds per wait, so the game's tests
+// ran past go test's 10 minutes with it on.
+var NoSync bool
+
 // dsn is the driver's name for path: a file: URI, so the mode and
 // pragmas ride along whatever the path holds.
 func dsn(path, mode string, busyMS int) (string, error) {
@@ -71,6 +78,9 @@ func dsn(path, mode string, busyMS int) (string, error) {
 	q := url.Values{}
 	q.Set("mode", mode)
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyMS))
+	if NoSync {
+		q.Add("_pragma", "synchronous(OFF)")
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kjFriday/local-verse-proxy/internal/gamestate"
 )
 
 // TestMain lets the test program stand in for the programs the game
@@ -26,6 +28,7 @@ func TestMain(m *testing.M) {
 	case "lvp":
 		os.Exit(asLvp(os.Args[1:]))
 	}
+	gamestate.NoSync = true
 	os.Exit(m.Run())
 }
 

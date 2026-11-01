@@ -150,7 +150,7 @@ func TestGoldenStart(t *testing.T) {
 	}
 	var g struct{ Starts []startCase }
 	json.Unmarshal(b, &g)
-	tmp := t.TempDir()
+	tmp := realTemp(t)
 	os.WriteFile(filepath.Join(tmp, "compose.yaml"), nil, 0o644)
 	os.WriteFile(filepath.Join(tmp, "seats.env"), []byte(
 		"LITELLM_MASTER_KEY=sk-fake-start-master\n"+
@@ -254,7 +254,7 @@ func TestGoldenPortInUse(t *testing.T) {
 			want = c.Stderr
 		}
 	}
-	tmp := t.TempDir()
+	tmp := realTemp(t)
 	os.WriteFile(filepath.Join(tmp, "compose.yaml"), nil, 0o644)
 	os.WriteFile(filepath.Join(tmp, "seats.env"), []byte(
 		"LITELLM_MASTER_KEY=sk-fake-start-master\n"), 0o600)
@@ -281,4 +281,15 @@ func TestGoldenPortInUse(t *testing.T) {
 	if code != 1 || got != want {
 		t.Errorf("%d %q, want %q", code, got, want)
 	}
+}
+
+// realTemp is t.TempDir with links resolved: on macOS the folder is
+// under /var, a link to /private/var, and the desk names files by
+// their real path (on Windows, the long form of a short name).
+func realTemp(t *testing.T) string {
+	tmp := t.TempDir()
+	if r, err := filepath.EvalSymlinks(tmp); err == nil {
+		return r
+	}
+	return tmp
 }

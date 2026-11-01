@@ -3,6 +3,7 @@ package gamestate
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -15,6 +16,12 @@ import (
 
 	"github.com/kjFriday/local-verse-proxy/internal/pyfmt"
 )
+
+// TestMain turns off SQLite's disk waits (see NoSync).
+func TestMain(m *testing.M) {
+	NoSync = true
+	os.Exit(m.Run())
+}
 
 const refDir = "../../tests/reference/game"
 
@@ -346,6 +353,31 @@ func TestPyFloatIsRepr(t *testing.T) {
 		if got, want := pyFloat(v), pyfmt.Repr(v); got != want {
 			t.Fatalf("pyFloat(%x) = %q, Repr %q",
 				math.Float64bits(v), got, want)
+		}
+	}
+}
+
+// TestNoSync: the switch reaches SQLite, and is off by default.
+func TestNoSync(t *testing.T) {
+	defer func(v bool) { NoSync = v }(NoSync)
+	for _, c := range []struct {
+		on   bool
+		want string
+	}{{true, "0"}, {false, "2"}} {
+		NoSync = c.on
+		path := filepath.Join(t.TempDir(), "office.db")
+		db, err := Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := db.Q("PRAGMA synchronous")
+		db.Close()
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("NoSync %v: %v %v", c.on, rows, err)
+		}
+		if got := fmt.Sprint(rows[0].vals[0]); got != c.want {
+			t.Errorf("NoSync %v: synchronous %s, want %s", c.on,
+				got, c.want)
 		}
 	}
 }
