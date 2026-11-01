@@ -902,6 +902,8 @@ network over plain HTTP.
 ## File map
 
 - `README.md`: this guide.
+- `docs/lvp-handbook.md`: how to use `lvp`, the Go program for
+  keys, Front Desk and the game, with Windows and WSL steps.
 - `config.yaml`: the models, and the names of the settings that hold
   their secrets. No secrets inside, so it is safe to commit.
 - `seats.env.example`: the template for your secrets file.
