@@ -1,0 +1,8 @@
+# Every text file keeps LF line ends on every system, so goldens,
+# recorded outputs and the width check read the same bytes on
+# Windows as on Linux.
+* text=auto eol=lf
+*.db binary
+# Left out of release archives (git archive): CI and test material.
+/.github export-ignore
+/tests export-ignore

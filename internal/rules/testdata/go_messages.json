@@ -1,0 +1,252 @@
+{
+ "about": [
+  "What Go says or does where it differs from Python on purpose",
+  "(ledger O-1 and O-12, tests/parity/ledger/base.md).",
+  "words: Go's message where Python crashed, read a wrong type, or",
+  "refused or read the file with other words; a list is joined with",
+  "nothing. warnings: unknown keys, which Python never named. loads:",
+  "files Go reads that Python refused. seat_names: SeatNames' answer",
+  "where it differs from GameSeats', sorted."
+ ],
+ "warnings": {
+  "good-unknown-keys": [
+   "rules.toml line 9: unknown key office.colour (ignored)"
+  ],
+  "good-unknown-persona-key": [
+   "rules.toml line 91: unknown key personas.frugal.mood (ignored)"
+  ],
+  "good-unknown-seat-key": [
+   "rules.toml line 144: unknown key roster.seats[0].hat (ignored)"
+  ],
+  "good-unknown-table": [
+   "rules.toml line 156: unknown key extra (ignored)"
+  ]
+ },
+ "words": {
+  "bad-utf8": [
+   "cannot read <dir>/bad-utf8/rules.toml: toml: line 156 (last",
+   " key \"roster\"): invalid UTF-8 byte: 0xff"
+  ],
+  "big-float-unknown": [
+   "cannot read <dir>/big-float-unknown/rules.toml: toml: line",
+   " 157 (last key \"extra.a\"): 1e400 is out of range for float64"
+  ],
+  "big-int-unknown": [
+   "cannot read <dir>/big-int-unknown/rules.toml: toml: line",
+   " 157 (last key \"extra.a\"): 9223372036854775808 is out of",
+   " range for int64"
+  ],
+  "bom": [
+   "cannot read <dir>/bom/rules.toml: toml: line 1: the file",
+   " starts with a byte order mark; save it as UTF-8 without BOM"
+  ],
+  "calls-float": [
+   "rules.toml line 37: quests.sizes.small.calls must be a",
+   " whole number"
+  ],
+  "chars-three": [
+   "rules.toml line 82: personas.frugal.chars must be a list of",
+   " two whole numbers"
+  ],
+  "close-int": [
+   "rules.toml line 18: day.close must be text, in quotes"
+  ],
+  "daily-text": "rules.toml line 23: mana.daily must be a number",
+  "duplicate-key": [
+   "cannot read <dir>/duplicate-key/rules.toml: toml: line 9",
+   " (last key \"office.key_life\"): Key 'office.key_life' has",
+   " already been defined."
+  ],
+  "individuals-false-text": [
+   "rules.toml line 61: board.individuals must be true or false"
+  ],
+  "individuals-text": [
+   "rules.toml line 61: board.individuals must be true or false"
+  ],
+  "length-int": [
+   "rules.toml line 15: day.length must be text, in quotes"
+  ],
+  "max-attempts-float": [
+   "rules.toml line 29: quests.max_attempts must be a whole",
+   " number"
+  ],
+  "models-text": [
+   "rules.toml line 7: office.models must be a list of text,",
+   " like [\"local\", \"pro\"]"
+  ],
+  "no-close": "rules.toml line 10: day.close is missing",
+  "no-day": "rules.toml: day is missing",
+  "no-persona-stream": [
+   "rules.toml line 80: personas.frugal.stream is missing"
+  ],
+  "no-roster": "rules.toml: roster is missing",
+  "no-seats": "rules.toml line 142: roster.seats is missing",
+  "pause-text": [
+   "rules.toml line 87: personas.frugal.pause must be a list of",
+   " two numbers"
+  ],
+  "per-seat-bool": [
+   "rules.toml line 26: quests.per_seat must be a whole number"
+  ],
+  "per-seat-float": [
+   "rules.toml line 26: quests.per_seat must be a whole number"
+  ],
+  "prefix-int": [
+   "rules.toml line 5: office.seat_prefix must be text, in",
+   " quotes"
+  ],
+  "quests-float": [
+   "rules.toml line 88: personas.frugal.quests must be a whole",
+   " number"
+  ],
+  "reply-float": [
+   "rules.toml line 83: personas.frugal.reply must be a whole",
+   " number"
+  ],
+  "seat-int": [
+   "rules.toml line 144: roster.seats[0].name must be text, in",
+   " quotes"
+  ],
+  "seat-missing-guild": [
+   "rules.toml line 144: roster.seats[0].guild is missing"
+  ],
+  "seat-persona-int": [
+   "rules.toml line 144: roster.seats[0].persona must be text,",
+   " in quotes"
+  ],
+  "stream-int": [
+   "rules.toml line 90: personas.frugal.stream must be true or",
+   " false"
+  ],
+  "syntax-error": [
+   "cannot read <dir>/syntax-error/rules.toml: toml: line 5:",
+   " expected '.' or ']' to end table name, but got '\\n' instead"
+  ],
+  "syntax-no-value": [
+   "cannot read <dir>/syntax-no-value/rules.toml: toml: line 8",
+   " (last key \"office.key_life\"): expected value but found '#'",
+   " instead"
+  ]
+ },
+ "loads": {
+  "toml11-datetime-hhmm": "O-12: TOML 1.1 form",
+  "toml11-escape-e": "O-12: TOML 1.1 form",
+  "toml11-escape-x": "O-12: TOML 1.1 form",
+  "toml11-inline-newline": "O-12: TOML 1.1 form",
+  "toml11-time-hhmm": "O-12: TOML 1.1 form",
+  "toml11-trailing-comma": "O-12: TOML 1.1 form"
+ },
+ "seat_names": {
+  "big-float-unknown": {
+   "prefix": "",
+   "why": "O-12: a number BurntSushi cannot hold",
+   "roster": []
+  },
+  "big-int-unknown": {
+   "prefix": "",
+   "why": "O-12: a number BurntSushi cannot hold",
+   "roster": []
+  },
+  "prefix-big-int": {
+   "prefix": "",
+   "why": "O-12: a number BurntSushi cannot hold",
+   "roster": []
+  },
+  "toml11-datetime-hhmm": {
+   "prefix": "game-",
+   "why": "O-12: Go reads TOML 1.1 forms",
+   "roster": [
+    "game-bea",
+    "game-ben",
+    "game-blitz",
+    "game-fern",
+    "game-gia",
+    "game-gus",
+    "game-moss",
+    "game-sal",
+    "game-sid",
+    "game-spike"
+   ]
+  },
+  "toml11-escape-e": {
+   "prefix": "game-",
+   "why": "O-12: Go reads TOML 1.1 forms",
+   "roster": [
+    "game-bea",
+    "game-ben",
+    "game-blitz",
+    "game-fern",
+    "game-gia",
+    "game-gus",
+    "game-moss",
+    "game-sal",
+    "game-sid",
+    "game-spike"
+   ]
+  },
+  "toml11-escape-x": {
+   "prefix": "game-",
+   "why": "O-12: Go reads TOML 1.1 forms",
+   "roster": [
+    "game-bea",
+    "game-ben",
+    "game-blitz",
+    "game-fern",
+    "game-gia",
+    "game-gus",
+    "game-moss",
+    "game-sal",
+    "game-sid",
+    "game-spike"
+   ]
+  },
+  "toml11-inline-newline": {
+   "prefix": "game-",
+   "why": "O-12: Go reads TOML 1.1 forms",
+   "roster": [
+    "game-bea",
+    "game-ben",
+    "game-blitz",
+    "game-fern",
+    "game-gia",
+    "game-gus",
+    "game-moss",
+    "game-sal",
+    "game-sid",
+    "game-spike"
+   ]
+  },
+  "toml11-time-hhmm": {
+   "prefix": "game-",
+   "why": "O-12: Go reads TOML 1.1 forms",
+   "roster": [
+    "game-bea",
+    "game-ben",
+    "game-blitz",
+    "game-fern",
+    "game-gia",
+    "game-gus",
+    "game-moss",
+    "game-sal",
+    "game-sid",
+    "game-spike"
+   ]
+  },
+  "toml11-trailing-comma": {
+   "prefix": "game-",
+   "why": "O-12: Go reads TOML 1.1 forms",
+   "roster": [
+    "game-bea",
+    "game-ben",
+    "game-blitz",
+    "game-fern",
+    "game-gia",
+    "game-gus",
+    "game-moss",
+    "game-sal",
+    "game-sid",
+    "game-spike"
+   ]
+  }
+ }
+}

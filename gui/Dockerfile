@@ -4,18 +4,18 @@
 # See gui/README.md, "Run it in Docker".
 
 # The two base images, pinned to exact builds by their sha256 digests
-# (a tag can move; a digest cannot): Go 1.24.13 on Alpine 3.23, and
+# (a tag can move; a digest cannot): Go 1.26.10 on Alpine 3.24, and
 # Python 3.12.16 on Debian 13. To update one, pull its tag, then put
 # the new digest from `docker image inspect` here.
-ARG GO_DIGEST=8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191
+ARG GO_DIGEST=a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308
 ARG PY_DIGEST=aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
 
 # 1. Build the Go mint-key: one file, with no C parts, so it needs
 # nothing else at run time. It uses Go's standard library only, so
 # this step downloads nothing.
-FROM golang:1.24-alpine@sha256:${GO_DIGEST} AS mint
+FROM golang:1.26-alpine@sha256:${GO_DIGEST} AS mint
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 COPY cmd/ cmd/
 COPY internal/ internal/
 ARG VERSION=dev

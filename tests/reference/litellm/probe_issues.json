@@ -1,0 +1,245 @@
+[
+ {
+  "section": "Minting more keys (--duration bullet)",
+  "readme_says": "`--duration 90d`: time until it expires. `d` is days; `h` (hours) and `w` (weeks) work too.",
+  "command": "./mint-key.sh life-dur-1m --duration 1m ; ./mint-key.sh life-dur-bad-1mo --duration 1mo ; ./mint-key.sh life-dur-30s --duration 30s, then GET /key/info for each, then curl /v1/models with the 1m key ~70s later",
+  "observed": "`1m` means 1 MINUTE: created 00:19:52, expires 00:20:52, and the key got 401 Expired Key a minute later. `1mo` means 30 days (expires 2026-11-30). `30s` and `5s` are accepted as seconds. Someone who types `--duration 3m` meaning 3 months gets a key that dies in 3 minutes, with no warning.",
+  "severity": "medium",
+  "fix": "Replace the bullet with: \"`--duration 90d`: time until it expires: a number and a lowercase unit, no space. `d` is days; `h` (hours), `w` (weeks) and `s` (seconds) work too. `m` means minutes, not months: for months use days, like `90d`.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: minting (missing entry)",
+  "readme_says": "Nothing. No entry covers a bad `--duration`, and mint-key.sh checks --budget but not --duration.",
+  "command": "./mint-key.sh life-dur-bad-90 --duration 90 ; ./mint-key.sh life-dur-90D --duration 90D ; ./mint-key.sh life-dur-bad-2x --duration 2x",
+  "observed": "Each prints `curl: (22) The requested URL returned error: 500` then `Unsupported duration unit, passed duration: 90` (or `90D`, `2x`), and exits non-zero. No key is created. The user sees a server-error 500 that the README never mentions; an uppercase `D` alone triggers it.",
+  "severity": "medium",
+  "fix": "Add to Troubleshooting: minting: \"- **`curl: (22)` with `500`, then `Unsupported duration unit`**: `--duration` needs a number and a lowercase unit with no space, like `30d`, `12h` or `2w`.\" Optionally, also validate in mint-key.sh before posting: `[[ \"$duration\" =~ ^[0-9]+(s|m|h|d|w|mo)$ ]] || die \"--duration must be a number and a unit, like 30d, 12h or 2w\"`.",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: seats (\"A key that worked is refused\"), and Budgets, expiry and seat names",
+  "readme_says": "**A key that worked is refused**: `401` means it expired or was revoked; `422` means its budget is spent. Revoke it by seat name to free the name, then mint the seat a new key.",
+  "command": "./mint-key.sh life-both --models local,claude --budget 1 ; curl -s -w '\\n%{http_code}\\n' localhost:4000/v1/chat/completions -H \"Authorization: Bearer $KEY\" -H 'Content-Type: application/json' -d '{\"model\":\"claude\",...}'",
+  "observed": "A valid, unexpired seat key asking for `claude`, with ANTHROPIC_API_KEY empty on the proxy, gets HTTP 401 with `litellm.AuthenticationError: Missing Anthropic API Key - A call is being made to anthropic but no key is set...`. So 401 also covers a problem with the proxy's own provider key, and following the README here (revoke and mint again) does not help. The seat-key 401s carry clear messages: `Authentication Error - Expired Key` (type expired_key) and `Invalid proxy server token passed` (type token_not_found_in_db).",
+  "severity": "medium",
+  "fix": "Replace the entry with: \"**A key that worked is refused**: read the message. `401` with `Expired Key` or `Invalid proxy server token` means the key expired or was revoked; `422` with `Budget has been exceeded` means its budget is spent. For those, revoke it by seat name to free the name, then mint the seat a new key. A `401` whose message starts `litellm.AuthenticationError` and names Anthropic is the proxy's `ANTHROPIC_API_KEY`, not the seat's key: see [Troubleshooting: the proxy](#troubleshooting-the-proxy).\"",
+  "src": "probe"
+ },
+ {
+  "section": "Minting more keys (--budget bullet), and Troubleshooting: seats (\"A brand-new key gets a budget error\")",
+  "readme_says": "Never type `$`: the shell quietly turns `$20` into `0`, and a key with a 0 budget is refused every time. / it was minted with a 0 budget, often by typing `$20`.",
+  "command": "bash: printf '[%s] [%s] [%s]' \"$25\" \"$100\" \"$2.50\" ; ./mint-key.sh life-b00 --budget 00 ; zsh -f -c './mint-key.sh life-zsh --budget $20' ; zsh -f -c 'printf \"[%s]\\n\" $20 \"$20\"'",
+  "observed": "In bash the claim holds for $20, but bash reads `$20` as `${2}0`. So `$25` becomes `5`: a working key with the wrong budget, never refused. `$100` becomes `00`, which mint-key.sh accepts as max_budget 0.0. `$2.50` becomes `.50`, which the script rejects. In zsh (the default shell on macOS, which the README targets) `$20` is the 20th positional parameter and expands to nothing: `--budget $20` gives the usage text, not a 0-budget key.",
+  "severity": "low",
+  "fix": "Replace that sentence with: \"Never type `$`: the shell quietly mangles it. In bash, `$20` becomes `0` (a key refused every time) and `$25` becomes `5`; in zsh, the Mac default, `$20` vanishes and you get the usage text.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: seats (\"A brand-new key gets a budget error\")",
+  "readme_says": "**A brand-new key gets a budget error**: it was minted with a 0 budget, often by typing `$20`. Revoke it and mint again.",
+  "command": "curl -s -w '\\n%{http_code}\\n' localhost:4000/v1/models -H \"Authorization: Bearer $KEY\"   (KEY minted with --budget $20 in bash)",
+  "observed": "422 `{\"error\":{\"message\":\"Budget has been exceeded! Key=life-budget0 (sk-...) Current cost: 0.0, Max budget: 0.0\",\"type\":\"budget_exceeded\",...}}` on every endpoint, /v1/models included. The behaviour matches the README, but the message says 'exceeded' for a key that has never been used, and the README never quotes the text, so a user may not match it to this entry.",
+  "severity": "low",
+  "fix": "Change the entry's start to: \"**A brand-new key gets `422` `Budget has been exceeded!` with `Max budget: 0.0`**: it was minted with a 0 budget, ...\"",
+  "src": "probe"
+ },
+ {
+  "section": "Minting more keys (--models bullet)",
+  "readme_says": "`--models local,claude`: the aliases the key may use, split by commas. Name at least one.",
+  "command": "./mint-key.sh life-typo --models lcoal ; curl localhost:4000/v1/models -H \"Authorization: Bearer $KEY\" ; curl .../v1/chat/completions ... '{\"model\":\"local\",...}'",
+  "observed": "A mistyped alias is accepted without complaint (exit 0). /v1/models for that key lists `lcoal`, a model that does not exist, and a request for `local` gets 403 `The requested model 'local' is not available for this API key`. Nothing at mint time warns that the alias is unknown.",
+  "severity": "low",
+  "fix": "Add to the bullet: \"Names are not checked when you mint: a typo such as `lcoal` makes a key that gets `403` for everything. Copy the names from `model_name:` in `config.yaml`.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Revoking a key",
+  "readme_says": "./mint-key.sh --revoke \"$(cat laptop.key)\"  # or by the key itself ... delete its file with `rm laptop.key`.",
+  "command": "./mint-key.sh --revoke \"$(cat <missing>.key)\"",
+  "observed": "When the .key file is already gone, the user sees `cat: ...: No such file or directory` followed by the full usage text (exit 2), with no hint that the key was not revoked.",
+  "severity": "low",
+  "fix": "After the code block, add: \"If `cat` says `No such file or directory` and the usage text follows, the key file is gone: revoke by seat name instead.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: seats ('A key that worked is refused')",
+  "readme_says": "A key that worked is refused: `401` means it expired or was revoked; `422` means its budget is spent. Revoke it by seat name to free the name, then mint the seat a new key.",
+  "command": "curl -s -w '\\n[%{http_code}]\\n' http://192.0.2.2:4000/v1/chat/completions -H \"Authorization: Bearer $(cat seat-desk.key)\" -H 'Content-Type: application/json' -d '{\"model\":\"claude\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}'   # seat-desk minted with --models local,claude; proxy has empty ANTHROPIC_API_KEY",
+  "observed": "HTTP 401 with {\"error\":{\"message\":\"litellm.AuthenticationError: Missing Anthropic API Key - A call is being made to anthropic but no key is set ... LiteLLM: model group 'claude' failed with the error above. No fallback was attempted.\",\"type\":\"authentication_error\",\"code\":\"401\"}}. The seat key itself is valid: the same key's /v1/models returns 200 and lists claude, and local works. Following the README, a seat or admin would revoke and re-mint a good key, and the new key would fail the same way.",
+  "severity": "medium",
+  "fix": "In Troubleshooting: seats, change the bullet to: \"**A key that worked is refused**: `401` with `Invalid proxy server token` means it expired or was revoked; `422` means its budget is spent. Revoke it by seat name to free the name, then mint the seat a new key. A `401` that mentions `Anthropic` (such as `Missing Anthropic API Key`) is not the seat's key: the proxy machine's `ANTHROPIC_API_KEY` is missing or wrong; see [Troubleshooting: the proxy](#troubleshooting-the-proxy).\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: seats (placeholder typed as is) / Step 7 seat-check curl",
+  "readme_says": "**`No such file or directory` naming `proxy-ip` or similar**: a placeholder was typed as is. Put in the real value, without `< >`.",
+  "command": "curl -s -w '\\n[%{http_code}]\\n' http://192.0.2.2:4000/v1/models -H \"Authorization: Bearer <seat-key>\"",
+  "observed": "The `<seat-key>` placeholder sits inside double quotes, so bash does not treat it as a redirect and there is no 'No such file' error. The proxy answers HTTP 401 {\"error\":{\"message\":\"LiteLLM Virtual Key expected. Received=<sea****key>, expected to start with 'sk-'.\",\"type\":\"auth_error\",\"code\":\"401\"}}. A seat that replaced only <proxy-ip> gets this 401, which the seats section does not mention. Its only 401 bullet says 'expired or was revoked'. Related: dropping the 'Bearer ' word gives 401 'Malformed API Key passed in. Ensure Key has `Bearer ` prefix.'",
+  "severity": "low",
+  "fix": "Add to the placeholder bullet in Troubleshooting: seats: \"... Put in the real value, without `< >`. A `401` saying `expected to start with 'sk-'` means the `<seat-key>` placeholder, or only part of the key, was sent: paste the whole line from `cat <seat>.key`.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Step 7: Give the key to a seat ('Some apps want /v1 on the end; the proxy accepts both')",
+  "readme_says": "Some apps want `/v1` on the end; the proxy accepts both.",
+  "command": "curl -s -w '\\n[%{http_code}]\\n' http://192.0.2.2:4000/v1/v1/chat/completions -H \"Authorization: Bearer $(cat seat-laptop.key)\" -H 'Content-Type: application/json' -d '{\"model\":\"local\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}'",
+  "observed": "Both base URL forms work (confirmed). But an app that adds `/v1` itself, given a base URL that already ends in `/v1`, requests /v1/v1/chat/completions and gets HTTP 404 {\"detail\":\"Not Found\"}. Troubleshooting: seats has no entry for that 404. A full path typed with a trailing slash (e.g. /v1/models/) gets an empty-body 307 redirect to the slash-less path. curl without -L prints nothing for it.",
+  "severity": "low",
+  "fix": "Add a bullet to Troubleshooting: seats: \"**`404` with `{\\\"detail\\\":\\\"Not Found\\\"}`**: the app added `/v1` to a base URL that already had it. Use `http://<proxy-ip>:4000` without `/v1` in that app.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Step 7: Find the proxy address",
+  "readme_says": "On the proxy machine, run `hostname -I` (Linux) ... Use the address starting `192.168.` or `10.`. Addresses starting `172.` are usually Docker's or WSL's own; skip them.",
+  "command": "hostname -I",
+  "observed": "`192.0.2.2 172.17.0.1 172.18.0.1`. Once this stack is up, a Linux proxy machine always shows at least two Docker addresses: docker0 172.17.0.1 and this compose network's gateway 172.18.0.1 (the network is local-verse-proxy_default). The README's skip rule handles those correctly. In this sandbox the machine's own address, 192.0.2.2, starts with neither 192.168. nor 10., so the rule leaves no address to use. Real LANs can also use 172.16.0.0/12, which 'skip 172.' would wrongly discard. Docker's addresses can be told apart because they end in .0.1. (The 192.0.2.x address is specific to this sandbox; how common 172.16/12 LANs are was not tested here.)",
+  "severity": "low",
+  "fix": "Replace the last two sentences with: \"Use the address your router gave the machine, usually starting `192.168.` or `10.` (some networks use `172.16.` to `172.31.`). Docker's own addresses look like `172.17.0.1` and `172.18.0.1`, ending in `.0.1`; skip those. If unsure, check your router's device list.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: seats (placeholder typed as is): wording in other shells",
+  "readme_says": "**`No such file or directory` naming `proxy-ip` or similar**: a placeholder was typed as is.",
+  "command": "dash -c 'curl http://<proxy-ip>:4000/v1/models -H \"Authorization: Bearer <seat-key>\"'",
+  "observed": "dash (Debian's /bin/sh) prints `dash: 1: cannot open proxy-ip: No such file` (rc=2): no 'or directory'. bash matches the README exactly. zsh, the macOS default, could not be tested because apt is blocked in this sandbox. Windows PowerShell (`curl.exe`, which Step 7 tells Windows seats to use) was not tested either.",
+  "severity": "low",
+  "fix": "Make the match looser: \"**`No such file` (any capitalisation) naming `proxy-ip` or similar**: a placeholder was typed as is. ...\" Optionally, after testing it, add what PowerShell prints for `<`.",
+  "src": "probe"
+ },
+ {
+  "section": "Step 5: Mint your first key (also Quick start, Minting more keys)",
+  "readme_says": "The file is saved only if minting worked. If not, the reason is on screen and the next lines say `No such file or directory`",
+  "command": "Seat mint-dup, first run then a second run of the same 3 lines: key=$(./mint-key.sh mint-dup) && echo \"$key\" > mint-dup.key ; chmod 600 mint-dup.key ; cat mint-dup.key",
+  "observed": "The second run prints `curl: (22) The requested URL returned error: 400`, `Key with alias 'mint-dup' already exists...`, then the OLD key `sk-N7O...` from the existing file. No 'No such file or directory' line appears, and the last line is an sk- key that looks just like the Success output. This bites anyone who reruns Step 5 or the Quick start for `laptop`, and the sim box already contains laptop.key. If the old key has expired but still holds the seat name (README: 'An expired key gets 401 but may still hold its seat name'), the printed key is dead.",
+  "severity": "low",
+  "fix": "In Step 5, change the failure sentence to: \"If not, the reason is on screen above the `cat` output. If `laptop.key` did not exist before, the next lines say `No such file or directory`. If it did (you are minting the same name again), `cat` still shows the old key from last time, so read the lines above it: `already exists` means that old key still holds the name; see [Troubleshooting: minting](#troubleshooting-minting).\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: minting (401 bullet) / Step 5 'The master key is never printed'",
+  "readme_says": "**`curl: (22)` with `401`**: the proxy did not accept the master key ... / The master key is never printed",
+  "command": "SEATS_ENV=<copy of seats.env with a different LITELLM_MASTER_KEY> ./mint-key.sh mint-x-badmk",
+  "observed": "`curl: (22) The requested URL returned error: 401` then `Authentication Error, Invalid proxy server token passed. Received API Key = sk-...g000, Key Hash (Token) =21acf4...95ba. Unable to find token in cache or LiteLLM_VerificationTokenTable`. The script relays LiteLLM's message, which includes the last 4 characters of the master key from seats.env and its full SHA-256 hash. That is not the key, but it is a fragment of it on screen, which a reader may take as breaking the 'never printed' promise. The README also does not quote this message, so it is hard to match.",
+  "severity": "low",
+  "fix": "Append to the 401 bullet: \"LiteLLM's message reads `Authentication Error, Invalid proxy server token passed. Received API Key = sk-...` and shows only the last 4 characters and a hash of the key, not the key itself.\"",
+  "src": "probe"
+ },
+ {
+  "section": "Troubleshooting: the proxy (empty master key), and the line under Step 4 'Is it up?' ('proxy shows Restarting')",
+  "readme_says": "Its pointer says: 'Fix it as in Troubleshooting: minting'. That entry says: 'If you did [run docker compose up], Postgres already saved the template password, so start over (no keys exist yet): docker compose down -v, Step 3a, then docker compose up -d.'",
+  "command": "Blanked LITELLM_MASTER_KEY (salt and password stayed real). Re-ran the exact Step 3a block, then: diff backup seats.env; grep -E 'change-me|^LITELLM_MASTER_KEY=$' seats.env; docker compose up -d --force-recreate proxy; curl /v1/models with the existing dis-persist key; ./mint-key.sh dis-newmk",
+  "observed": "Step 3a changed only line 8 (the master key), and the grep check printed nothing. The proxy started, the existing seat key still got 200, and minting worked. No 'down -v' was needed. Following the README pointer, a user who blanked the master key after minting real keys would be sent to 'docker compose down -v' and lose every key. The '(no keys exist yet)' assumption holds only on a first run with template values.",
+  "severity": "medium",
+  "fix": "In Troubleshooting: the proxy, replace 'Fix it as in Troubleshooting: minting.' with: 'Rerun the Step 3a block (it fills only the empty line), then docker compose up -d --force-recreate proxy. Existing keys keep working. Only if grep change-me seats.env also prints lines, follow Troubleshooting: minting.' In Troubleshooting: minting, split the entry: 'LITELLM_MASTER_KEY: not set' means rerun Step 3a, then force-recreate the proxy. Keep the 'down -v' path only for 'replace the change-me values'.",
+  "src": "disrupt"
+ },
+ {
+  "section": "Troubleshooting: the proxy ('proxy keeps Restarting'), and Step 4 'Is it up?' ('or proxy shows Restarting')",
+  "readme_says": "'proxy keeps Restarting, and its log says it refused to start...' / 'proxy keeps restarting, and docker compose logs db says password authentication failed' / Step 4: 'Still 000 after 3 minutes, or proxy shows Restarting?'",
+  "command": "With an empty master key, and separately with a wrong DATABASE_URL password: docker compose ps proxy --format '{{.Status}}', every 10s; then 120 polls at 4 per second; docker inspect -f '{{.RestartCount}}'",
+  "observed": "LiteLLM boots for about 20 to 25s before exiting with code 3, so Docker's restart backoff keeps resetting. ps almost always shows 'Up 2 seconds' ... 'Up 23 seconds', with the count resetting, and the full 'docker compose ps' row says only 'Up 15 seconds'. 'Restarting (3) Less than a second ago' appeared in 1 of 120 polls. RestartCount climbed (2, 6; 0 to 3 in 90s). A reader looking for the word Restarting will usually not see it.",
+  "severity": "medium",
+  "fix": "Say: 'proxy shows Restarting, or Up with a small number of seconds that keeps going back to 0 (while the knock stays 000)'. Add a check: docker inspect -f '{{.RestartCount}}' local-verse-proxy-proxy-1 (a number that keeps growing means a restart loop). Use the same wording in Step 4 'Is it up?' and in both Troubleshooting: the proxy entries.",
+  "src": "disrupt"
+ },
+ {
+  "section": "Day-to-day commands / Adding a model ('docker compose up -d --force-recreate proxy # apply edits')",
+  "readme_says": "'docker compose up -d --force-recreate proxy   # apply edits'. 'Use the last line after editing seats.env or config.yaml.' The text implies only the proxy is recreated.",
+  "command": "After any seats.env edit (wrong DATABASE_URL, then restore): docker compose up -d --force-recreate proxy",
+  "observed": "Output: 'Container local-verse-proxy-db-1 Recreate / Recreated / Starting / Healthy', then proxy Recreate. db is recreated too, because it reads the same env_file (its config hash changes). Its uptime resets (inspect showed db Created at the restore time, RestartCount 0). This is harmless: pgdata is kept and keys survived. With seats.env unchanged, db stays 'Running'. A plain 'docker compose up -d proxy' also applied the seats.env change and recreated both.",
+  "severity": "low",
+  "fix": "Under Day-to-day commands, add: 'After a seats.env edit this also recreates db, which also reads seats.env. That is harmless: keys stay in pgdata.' Optionally note that plain docker compose up -d also picks up seats.env edits. Only restart does not.",
+  "src": "disrupt"
+ },
+ {
+  "section": "Day-to-day commands ('docker compose up -d # start')",
+  "readme_says": "'docker compose up -d          # start'. There is no wait step and no note that the proxy needs time before it answers.",
+  "command": "docker compose down; docker compose up -d; until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done (timed). Also ran ./mint-key.sh right after a force-recreate.",
+  "observed": "up -d returned after 6.3s, but /health/liveliness answered only 27.5s later (force-recreate of the proxy alone: about 32s). During that window, mint-key.sh failed with 'curl: (56) Recv failure: Connection reset by peer' and seats would get errors.",
+  "severity": "low",
+  "fix": "Under Day-to-day commands, after the start line add: 'It takes about 30 seconds before it answers. To wait: until curl -sfo /dev/null localhost:4000/health/liveliness; do sleep 3; done'",
+  "src": "disrupt"
+ },
+ {
+  "section": "Adding a model (third command)",
+  "readme_says": "./mint-key.sh den --models local,local-small",
+  "command": "./mint-key.sh dis-den --models local,local-small",
+  "observed": "The new key is printed to the terminal and not saved. Step 5 and the desk example in 'Minting more keys' both save the key with key=$(...) && echo \"$key\" > <seat>.key, so this example breaks the pattern and leaves a seat key in scrollback.",
+  "severity": "low",
+  "fix": "Change the line to: key=$(./mint-key.sh den --models local,local-small) && echo \"$key\" > den.key",
+  "src": "disrupt"
+ },
+ {
+  "section": "Step 5 ('The master key is never printed')",
+  "readme_says": "'The master key is never printed: the script hands it to curl through standard input...'",
+  "command": "Changed LITELLM_MASTER_KEY in seats.env without recreating, then: ./mint-key.sh dis-401",
+  "observed": "The script relays LiteLLM's error: 'Authentication Error, Invalid proxy server token passed. Received API Key = sk-...e69b, Key Hash (Token) =8bf6ae2f...'. That is the last 4 characters and the SHA-256 hash of the master key from seats.env. It is not the full key, but the claim 'never printed' is slightly overstated. In this test it was a throwaway key.",
+  "severity": "low",
+  "fix": "README: 'The master key is never printed in full. A 401 error shows only its last 4 characters and a hash.' Or, in mint-key.sh post(), drop the 'Received API Key ...' part of 401 messages before printing.",
+  "src": "disrupt"
+ },
+ {
+  "section": "Safety rule 6 (admin page)",
+  "readme_says": "'LiteLLM serves one at http://<proxy-ip>:4000/ui, and the master key logs in to it.' (Rule 8 says to log in from a browser on the proxy machine via localhost.)",
+  "command": "curl -o /dev/null -w '%{http_code}' localhost:4000/ui, then /ui/; POST localhost:4000/login with username=admin and password=<master key>, form-encoded",
+  "observed": "/ui gives 307, /ui/ gives 200, and the login gives 303 to /ui?login=success with Set-Cookie token=... (Path=/; SameSite=lax, no Secure or HttpOnly). So the claim holds. But the login form posts the master key as a plain form field. Rule 6 gives the <proxy-ip> URL without warning that logging in from another machine sends the master key across the LAN unencrypted. The FAQ warns about exactly this for mint-key.sh.",
+  "severity": "low",
+  "fix": "Add to rule 6: 'Log in only from a browser on the proxy machine (http://localhost:4000/ui). From another machine, the master key crosses your network unencrypted.'",
+  "src": "disrupt"
+ },
+ {
+  "section": "Adding a model (no guidance on removing one)",
+  "readme_says": "Covers adding a model only. 'old keys keep only the models they were made with' (confirmed).",
+  "command": "After restoring config.yaml (local-small removed) and force-recreating: curl /v1/models and /v1/chat/completions with model=local-small, using the dis-den key",
+  "observed": "/v1/models still lists local-small for that key (200). The chat call returns 400 'Invalid model name passed in model=local-small. Call /v1/models to view available models for your key.' This is confusing because /v1/models says the model is available.",
+  "severity": "low",
+  "fix": "Optional sentence under Adding a model: 'If you later remove a model, keys made with it still list it in /v1/models, but calls to it get 400 Invalid model name.'",
+  "src": "disrupt"
+ },
+ {
+  "section": "Step 6, Check 1 ('The first answer can take up to a minute... Fail: JSON with \"error\"'), and Troubleshooting: the proxy (the 'Check 1 fails with an error about reaching Ollama' and ufw entries)",
+  "readme_says": "The first answer can take up to a minute while Ollama loads the model. **Pass:** ... **Fail:** JSON with `\"error\"`; its message usually says why. / **Check 1 fails with an error about reaching Ollama**: check that `OLLAMA_API_BASE` is not `localhost`... / **Same, with Ollama on the proxy machine behind a firewall such as ufw**: ... which the firewall may drop.",
+  "command": "Side stack crit-side (port 4031): sed -i 's#^OLLAMA_API_BASE=.*#OLLAMA_API_BASE=http://192.168.1.50:11434#' seats.env (the template's example address); docker compose up -d --force-recreate proxy; then the Check 1 curl verbatim, capped first with -m 150 and then with -m 700; docker compose logs -t proxy; docker compose exec -T proxy python -c 'import litellm; print(litellm.request_timeout)'",
+  "observed": "When the Ollama address silently drops packets, Check 1 prints nothing at all. curl gave up after 150 s (rc 28, [000]), and again after 700 s. The proxy logged `litellm.APIConnectionError: Ollama_chatException - Cannot connect to host 192.168.1.50:11434 ... LiteLLM Retried: 2 times` at 01:05:15 for a request sent around 00:51:30, about 13.5 minutes later. litellm.request_timeout is 6000.0. Silent drops happen with a firewall that drops (ufw's default), an address on the wrong subnet, or the template's 192.168.1.50 left in place. The README promises at most 'up to a minute' and then JSON with an error, so a user waits with no output and no hint. (By contrast, localhost gives a clear 500 within 4 s. In this sandbox 192.168.1.50 drops packets; an absent address on a real LAN's own subnet usually fails faster.)",
+  "severity": "medium",
+  "fix": "In Check 1, add a time limit: `curl -s -m 120 localhost:4000/v1/chat/completions \\`. After the Fail sentence add: \"Nothing printed after 2 minutes (curl stops quietly) means the proxy cannot reach Ollama at all; it would otherwise wait over 10 minutes. See [Troubleshooting: the proxy](#troubleshooting-the-proxy).\" In Troubleshooting: the proxy, change the entry's start to \"**Check 1 fails with an error about reaching Ollama (`Cannot connect to host`), or prints nothing until it times out**: ...\", and in the ufw entry add \"(a firewall that drops requests makes Check 1 hang with no answer)\".",
+  "src": "critic"
+ },
+ {
+  "section": "Day-to-day commands ('a Docker volume called pgdata'), and Step 2 ('Run every later command from this folder')",
+  "readme_says": "Keys and spending live in a Docker **volume** (storage that survives restarts) called `pgdata`. Never add `-v` to `docker compose down`: that deletes the volume and every key.",
+  "command": "docker volume ls | grep pgdata (main stack). Side stack: docker compose down; mv crit-side crit-side-moved; cd crit-side-moved; docker compose up -d; curl /v1/models with an existing seat key; then docker compose down -v; mv back; docker compose up -d; curl again",
+  "observed": "The real volume is `local-verse-proxy_pgdata`, because Compose prefixes the folder name. After the folder was renamed, `docker compose up -d` printed `Volume crit-side-moved_pgdata Created`: a new, empty database. Every existing seat key got 401, as if all keys were gone. After moving the folder back, the old volume was used again and the key got 200. The same happens if someone clones into a folder with another name and later moves it. The README never warns about this, and `docker volume ls` does not show a volume named `pgdata`.",
+  "severity": "low",
+  "fix": "Change the bullet to: \"Keys and spending live in a Docker **volume** (storage that survives restarts) named after this folder: `local-verse-proxy_pgdata` (`docker volume ls` shows it). Do not rename or move the folder: Compose would start a new, empty database and every key would seem gone (rename it back to get them). Never add `-v` ...\". Optionally pin it in compose.yaml with a first line `name: local-verse-proxy`, so the project and volume keep their names wherever the folder is.",
+  "src": "critic"
+ },
+ {
+  "section": "Troubleshooting: the proxy (first entry)",
+  "readme_says": "**`proxy` keeps `Restarting`, and its log says it `refused to start` over the master key**: `LITELLM_MASTER_KEY` in `seats.env` is empty.",
+  "command": "docker run -d --name crit-mk-1 -e LITELLM_MASTER_KEY=sk-1234 ... sim/litellm:v1.106.6 --config /app/config.yaml --port 4000 (plus 5 other master keys: sk-change-me, sk-abc, a 19-char sk- key, a 31-char key without sk-, 48 hex chars); docker logs",
+  "observed": "Only `sk-1234`, the example key in LiteLLM's own docs, was refused, with exit code 3: `LiteLLM proxy refused to start: the master key is a publicly known default.`, followed by the same DANGEROUSLY_PERMIT advice. A user who skips Step 3a in the Quick start ('nano seats.env # fill it in') and pastes LiteLLM's example gets 'refused to start' over the master key, but the README says the key is empty. Rerunning Step 3a would not help, because it fills only an empty line.",
+  "severity": "low",
+  "fix": "Change to: \"... over the master key: `LITELLM_MASTER_KEY` in `seats.env` is empty, or (`publicly known default`) a well-known example such as `sk-1234`. For the second, empty that line first; then rerun Step 3a and `docker compose up -d --force-recreate proxy`.\"",
+  "src": "critic"
+ },
+ {
+  "section": "Troubleshooting: setting up (first entry)",
+  "readme_says": "**`Cannot connect to the Docker daemon`**: Docker is not running.",
+  "command": "DOCKER_HOST=unix:///tmp/crit-nonexistent.sock docker version --format '{{.Server.Version}}' ; and, with a stale socket file that nothing listens on: DOCKER_HOST=unix://<stale.sock> docker version --format '{{.Server.Version}}'",
+  "observed": "Docker CLI 29.9.2 prints `Cannot connect to the Docker daemon at unix://... Is the docker daemon running?` only when the socket file exists but nothing listens. When there is no socket (daemon never started, no socket activation), it prints `failed to connect to the docker API at unix:///...; check if the path is correct and if the daemon is running: dial unix ...: connect: no such file or directory`. That text does not contain the README's phrase. (The permission entry still matches: `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`.)",
+  "severity": "low",
+  "fix": "Change the entry to: \"**`Cannot connect to the Docker daemon`** or **`failed to connect to the docker API`**: Docker is not running. ...\"",
+  "src": "critic"
+ },
+ {
+  "section": "Status note and Step 2 / Quick start (`git checkout proxy-scaffold`): which README version was simulated",
+  "readme_says": "> **Status: fresh scaffold.** It has not yet been run end to end against a real LiteLLM. ... / The `git checkout` line is needed while this setup lives on the `proxy-scaffold` branch.",
+  "command": "git -C <sim box> rev-parse HEAD ; git ls-remote https://github.com/kjFriday/local-verse-proxy ; git -C <repo> diff --stat 5a87b66 origin/main (read-only)",
+  "observed": "The sim box is at 5a87b66. GitHub has proxy-scaffold at 2059214 and main at 09582f1, which merged it. The only changes since are to README.md: the checkout line is dropped, the status now says 'early, but tested', and an 'In plain terms' section is added. compose.yaml, config.yaml and mint-key.sh are identical, so every behaviour finding here also applies to main. But this README's checkout line and status note are already out of date, and someone following it lands on proxy-scaffold, behind main. The new status claim ('passed the 3-check test') is confirmed by this run.",
+  "severity": "low",
+  "fix": "No change to the file under test, because upstream already made it. Point the next sim run at origin/main (09582f1), and apply this report's README fixes to that version rather than to 5a87b66.",
+  "src": "critic"
+ }
+]

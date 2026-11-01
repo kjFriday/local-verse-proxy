@@ -1,0 +1,3306 @@
+{
+ "block": {
+  "content_type": "application/json",
+  "json": {
+   "access_group_ids": [],
+   "agent_id": null,
+   "aliases": {},
+   "allowed_cache_controls": [],
+   "allowed_routes": [],
+   "auto_rotate": false,
+   "blocked": true,
+   "budget_duration": null,
+   "budget_fallbacks": {},
+   "budget_id": null,
+   "budget_limits": null,
+   "budget_reset_at": null,
+   "config": {},
+   "created_at": "2026-10-31T21:28:08.815000Z",
+   "created_by": "default_user_id",
+   "expires": "2026-10-31T22:28:08.813000Z",
+   "key_alias": "cap-k",
+   "key_name": "sk-...XXXX",
+   "key_rotation_at": null,
+   "key_type": "default",
+   "last_active": null,
+   "last_rotation_at": null,
+   "litellm_budget_table": null,
+   "max_budget": 1.0,
+   "max_parallel_requests": null,
+   "metadata": {
+    "seat": "cap-k"
+   },
+   "model_max_budget": {},
+   "model_spend": {},
+   "models": [
+    "local"
+   ],
+   "object_permission": null,
+   "object_permission_id": null,
+   "org_id": null,
+   "permissions": {},
+   "project_id": null,
+   "rotation_count": 0,
+   "rotation_interval": null,
+   "router_settings": {},
+   "rpm_limit": null,
+   "settings_updated_at": "2026-10-31T21:28:08.980000Z",
+   "soft_budget_cooldown": false,
+   "spend": 0.0,
+   "team_id": null,
+   "token": "HASHbed601",
+   "total_spend": 0.0,
+   "tpd_limit": null,
+   "tpm_limit": null,
+   "updated_at": "2026-10-31T21:28:08.982000Z",
+   "updated_by": "default_user_id",
+   "user_id": null
+  },
+  "method": "POST",
+  "path": "/key/block",
+  "request": {
+   "key": "sk-SEATK"
+  },
+  "status": 200,
+  "text": null
+ },
+ "chat": {
+  "content_type": "application/json",
+  "json": {
+   "choices": [
+    {
+     "finish_reason": "stop",
+     "index": 0,
+     "message": {
+      "content": "Hello from fake Ollama. You said: 'hello there'",
+      "role": "assistant"
+     }
+    }
+   ],
+   "created": 1793482076,
+   "id": "chatcmpl-e2ceb8f6-070b-4ef7-ae22-f349ef499b05",
+   "model": "local",
+   "object": "chat.completion",
+   "usage": {
+    "completion_tokens": 9,
+    "prompt_tokens": 5,
+    "total_tokens": 14
+   }
+  },
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "local"
+  },
+  "status": 200,
+  "text": null
+ },
+ "chat_bad_key": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error, Invalid proxy server token passed. Received API Key = sk-...XXXX, Key Hash (Token) =HASHfe6971. Unable to find token in cache or `LiteLLM_VerificationTokenTable`",
+    "param": "key",
+    "type": "token_not_found_in_db"
+   }
+  },
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "local"
+  },
+  "status": 401,
+  "text": null
+ },
+ "chat_blocked": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error, Key is blocked. Update via `/key/unblock` if you're an admin.",
+    "param": "None",
+    "type": "auth_error"
+   }
+  },
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "local"
+  },
+  "status": 401,
+  "text": null
+ },
+ "chat_expired": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error - Expired Key. Key Expiry time 2026-10-31 21:28:09.797000+00:00 and current time 2026-10-31 21:28:12.016382+00:00",
+    "param": "sk-...XXXX",
+    "type": "expired_key"
+   }
+  },
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "local"
+  },
+  "status": 401,
+  "text": null
+ },
+ "chat_model_refused": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "403",
+    "message": "The requested model 'pro' is not available for this API key, or the model name is invalid. Check the models available to you and try again.",
+    "param": "model",
+    "type": "key_model_access_denied"
+   }
+  },
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "pro"
+  },
+  "status": 403,
+  "text": null
+ },
+ "chat_over_budget": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "422",
+    "message": "Budget has been exceeded! Key=cap-b (sk-...XXXX) Current cost: 0.0, Max budget: 0.0",
+    "param": null,
+    "type": "budget_exceeded"
+   }
+  },
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "local"
+  },
+  "status": 422,
+  "text": null
+ },
+ "chat_stream": {
+  "content_type": "text/event-stream; charset=utf-8",
+  "json": null,
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "request": {
+   "max_tokens": 20,
+   "messages": [
+    {
+     "content": "hello there",
+     "role": "user"
+    }
+   ],
+   "metadata": {
+    "tags": [
+     "lvg:abc123",
+     "day:1.ab12"
+    ]
+   },
+   "model": "local",
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   }
+  },
+  "status": 200,
+  "text": "data: {\"id\":\"760ff706-7a95-4045-bee4-b2921e159261\",\"object\":\"chat.completion.chunk\",\"created\":1793482076,\"model\":\"local\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hello from fake Ollama. You said: 'hello there'\"}}]}\n\ndata: {\"id\":\"760ff706-7a95-4045-bee4-b2921e159261\",\"object\":\"chat.completion.chunk\",\"created\":1793482076,\"model\":\"local\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"760ff706-7a95-4045-bee4-b2921e159261\",\"created\":1793482076,\"model\":\"local\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{}}],\"usage\":{\"completion_tokens\":9,\"prompt_tokens\":5,\"total_tokens\":14,\"completion_tokens_details\":{\"reasoning_tokens\":0,\"text_tokens\":9}}}\n\ndata: [DONE]\n\n"
+ },
+ "daily_activity": {
+  "content_type": "application/json",
+  "json": {
+   "metadata": {
+    "api_key_limit": null,
+    "entity_total_api_keys": null,
+    "has_more": false,
+    "page": 1,
+    "total_api_keys": null,
+    "total_api_requests": 20,
+    "total_autorouter_savings_spend": 0.0,
+    "total_cache_creation_input_tokens": 0,
+    "total_cache_read_input_tokens": 0,
+    "total_completion_tokens": 54,
+    "total_compression_saved_tokens": 0,
+    "total_compression_savings_spend": 0.0,
+    "total_failed_requests": 14,
+    "total_flat_cost": 0.0,
+    "total_gateway_injected_caching_savings_spend": 0.0,
+    "total_pages": 1,
+    "total_prompt_caching_savings_spend": 0.0,
+    "total_prompt_tokens": 30,
+    "total_response_time_ms": 93,
+    "total_spend": 0.0,
+    "total_successful_requests": 6,
+    "total_timed_requests": 6,
+    "total_tokens": 84
+   },
+   "results": [
+    {
+     "breakdown": {
+      "api_keys": {
+       "HASH3393e5": {
+        "metadata": {
+         "key_alias": "cap-b",
+         "key_exists": false,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 2,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 2,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       },
+       "HASH3b7cdd": {
+        "metadata": {
+         "key_alias": "cap-a",
+         "key_exists": false,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 3,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 18,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 1,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 10,
+         "spend": 0.0,
+         "successful_requests": 2,
+         "timed_requests": 2,
+         "total_response_time_ms": 21,
+         "total_tokens": 28
+        }
+       },
+       "HASH62cc5e": {
+        "metadata": {
+         "key_alias": "cap-a",
+         "key_exists": true,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 3,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 18,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 1,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 10,
+         "spend": 0.0,
+         "successful_requests": 2,
+         "timed_requests": 2,
+         "total_response_time_ms": 23,
+         "total_tokens": 28
+        }
+       },
+       "HASH6ad16e": {
+        "metadata": {
+         "key_alias": null,
+         "key_exists": false,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 2,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 2,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       },
+       "HASH992831": {
+        "metadata": {
+         "key_alias": "cap-a",
+         "key_exists": false,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 3,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 18,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 1,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 10,
+         "spend": 0.0,
+         "successful_requests": 2,
+         "timed_requests": 2,
+         "total_response_time_ms": 49,
+         "total_tokens": 28
+        }
+       },
+       "HASHc3188f": {
+        "metadata": {
+         "key_alias": "cap-b",
+         "key_exists": false,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 2,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 2,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       },
+       "HASHec466b": {
+        "metadata": {
+         "key_alias": "cap-b",
+         "key_exists": true,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 2,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 2,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       },
+       "HASHfe6971": {
+        "metadata": {
+         "key_alias": null,
+         "key_exists": false,
+         "team_id": null,
+         "user_email": null,
+         "user_id": null
+        },
+        "metrics": {
+         "api_requests": 3,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 3,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       }
+      },
+      "endpoints": {
+       "/chat/completions": {
+        "api_key_breakdown": {
+         "HASH3393e5": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 21,
+           "total_tokens": 28
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 23,
+           "total_tokens": 28
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 49,
+           "total_tokens": 28
+          }
+         },
+         "HASHc3188f": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHec466b": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHfe6971": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 3,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 15,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 54,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 9,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 30,
+         "spend": 0.0,
+         "successful_requests": 6,
+         "timed_requests": 6,
+         "total_response_time_ms": 93,
+         "total_tokens": 84
+        }
+       }
+      },
+      "entities": {
+       "Unassigned": {
+        "api_key_breakdown": {
+         "HASH3393e5": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 2,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 21,
+           "total_tokens": 28
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 23,
+           "total_tokens": 28
+          }
+         },
+         "HASH6ad16e": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 2,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 49,
+           "total_tokens": 28
+          }
+         },
+         "HASHc3188f": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 2,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHec466b": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 2,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHfe6971": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 3,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 20,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 54,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 14,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 30,
+         "spend": 0.0,
+         "successful_requests": 6,
+         "timed_requests": 6,
+         "total_response_time_ms": 93,
+         "total_tokens": 84
+        }
+       }
+      },
+      "mcp_servers": {},
+      "model_groups": {
+       "local": {
+        "api_key_breakdown": {
+         "HASH3393e5": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 21,
+           "total_tokens": 28
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 23,
+           "total_tokens": 28
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 49,
+           "total_tokens": 28
+          }
+         },
+         "HASHc3188f": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHec466b": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHfe6971": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 3,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 12,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 54,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 6,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 30,
+         "spend": 0.0,
+         "successful_requests": 6,
+         "timed_requests": 6,
+         "total_response_time_ms": 93,
+         "total_tokens": 84
+        }
+       },
+       "pro": {
+        "api_key_breakdown": {
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 3,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 3,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       }
+      },
+      "models": {
+       "ollama_chat/<local-model>": {
+        "api_key_breakdown": {
+         "HASH3393e5": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 21,
+           "total_tokens": 28
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 23,
+           "total_tokens": 28
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 49,
+           "total_tokens": 28
+          }
+         },
+         "HASHc3188f": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHec466b": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHfe6971": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 3,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 12,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 54,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 6,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 30,
+         "spend": 0.0,
+         "successful_requests": 6,
+         "timed_requests": 6,
+         "total_response_time_ms": 93,
+         "total_tokens": 84
+        }
+       },
+       "pro": {
+        "api_key_breakdown": {
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 3,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 3,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       }
+      },
+      "providers": {
+       "ollama_chat": {
+        "api_key_breakdown": {
+         "HASH3393e5": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 21,
+           "total_tokens": 28
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 23,
+           "total_tokens": 28
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 18,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 0,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 10,
+           "spend": 0.0,
+           "successful_requests": 2,
+           "timed_requests": 2,
+           "total_response_time_ms": 49,
+           "total_tokens": 28
+          }
+         },
+         "HASHc3188f": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHec466b": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHfe6971": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 3,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 3,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 12,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 54,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 6,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 30,
+         "spend": 0.0,
+         "successful_requests": 6,
+         "timed_requests": 6,
+         "total_response_time_ms": 93,
+         "total_tokens": 84
+        }
+       },
+       "unknown": {
+        "api_key_breakdown": {
+         "HASH3393e5": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH3b7cdd": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH62cc5e": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH6ad16e": {
+          "metadata": {
+           "key_alias": null,
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 2,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 2,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASH992831": {
+          "metadata": {
+           "key_alias": "cap-a",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHc3188f": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": false,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         },
+         "HASHec466b": {
+          "metadata": {
+           "key_alias": "cap-b",
+           "key_exists": true,
+           "team_id": null,
+           "user_email": null,
+           "user_id": null
+          },
+          "metrics": {
+           "api_requests": 1,
+           "autorouter_savings_spend": 0.0,
+           "cache_creation_input_tokens": 0,
+           "cache_read_input_tokens": 0,
+           "completion_tokens": 0,
+           "compression_saved_tokens": 0,
+           "compression_savings_spend": 0.0,
+           "failed_requests": 1,
+           "flat_cost": 0.0,
+           "gateway_injected_caching_savings_spend": 0.0,
+           "prompt_caching_savings_spend": 0.0,
+           "prompt_tokens": 0,
+           "spend": 0.0,
+           "successful_requests": 0,
+           "timed_requests": 0,
+           "total_response_time_ms": 0,
+           "total_tokens": 0
+          }
+         }
+        },
+        "metadata": {},
+        "metrics": {
+         "api_requests": 8,
+         "autorouter_savings_spend": 0.0,
+         "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0,
+         "completion_tokens": 0,
+         "compression_saved_tokens": 0,
+         "compression_savings_spend": 0.0,
+         "failed_requests": 8,
+         "flat_cost": 0.0,
+         "gateway_injected_caching_savings_spend": 0.0,
+         "prompt_caching_savings_spend": 0.0,
+         "prompt_tokens": 0,
+         "spend": 0.0,
+         "successful_requests": 0,
+         "timed_requests": 0,
+         "total_response_time_ms": 0,
+         "total_tokens": 0
+        }
+       }
+      }
+     },
+     "date": "2026-10-31",
+     "metrics": {
+      "api_requests": 20,
+      "autorouter_savings_spend": 0.0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "completion_tokens": 54,
+      "compression_saved_tokens": 0,
+      "compression_savings_spend": 0.0,
+      "failed_requests": 14,
+      "flat_cost": 0.0,
+      "gateway_injected_caching_savings_spend": 0.0,
+      "prompt_caching_savings_spend": 0.0,
+      "prompt_tokens": 30,
+      "spend": 0.0,
+      "successful_requests": 6,
+      "timed_requests": 6,
+      "total_response_time_ms": 93,
+      "total_tokens": 84
+     }
+    }
+   ]
+  },
+  "method": "GET",
+  "path": "/user/daily/activity?start_date=2026-10-31&end_date=2026-10-31&page_size=1000",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "delete_alias": {
+  "content_type": "application/json",
+  "json": {
+   "deleted_keys": [
+    "cap-b"
+   ]
+  },
+  "method": "POST",
+  "path": "/key/delete",
+  "request": {
+   "key_aliases": [
+    "cap-b"
+   ]
+  },
+  "status": 200,
+  "text": null
+ },
+ "delete_alias_none": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "404",
+    "message": "{'error': 'No keys found'}",
+    "param": null,
+    "type": "internal_server_error"
+   }
+  },
+  "method": "POST",
+  "path": "/key/delete",
+  "request": {
+   "key_aliases": [
+    "cap-z"
+   ]
+  },
+  "status": 404,
+  "text": null
+ },
+ "delete_key": {
+  "content_type": "application/json",
+  "json": {
+   "deleted_keys": [
+    "sk-SEATA"
+   ]
+  },
+  "method": "POST",
+  "path": "/key/delete",
+  "request": {
+   "keys": [
+    "sk-SEATA"
+   ]
+  },
+  "status": 200,
+  "text": null
+ },
+ "delete_keys_none": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "404",
+    "message": "{'error': 'No keys found'}",
+    "param": null,
+    "type": "internal_server_error"
+   }
+  },
+  "method": "POST",
+  "path": "/key/delete",
+  "request": {
+   "keys": [
+    "sk-gone-key"
+   ]
+  },
+  "status": 404,
+  "text": null
+ },
+ "generate": {
+  "content_type": "application/json",
+  "json": {
+   "access_group_ids": [],
+   "agent_id": null,
+   "aliases": {},
+   "allowed_cache_controls": [],
+   "allowed_passthrough_routes": null,
+   "allowed_routes": [],
+   "allowed_vector_store_indexes": null,
+   "blocked": null,
+   "budget_duration": "1d",
+   "budget_fallbacks": {},
+   "budget_id": null,
+   "budget_limits": null,
+   "config": {},
+   "created_at": "2026-10-31T21:27:56.354000Z",
+   "created_by": "default_user_id",
+   "default_estimated_output_tokens": null,
+   "default_estimated_output_tokens_per_model": null,
+   "denied_passthrough_routes": null,
+   "disable_global_guardrails": null,
+   "duration": null,
+   "enable_prompt_caching": null,
+   "end_user_budget_id": null,
+   "enforced_params": null,
+   "expires": "2026-10-31T22:27:56.352031Z",
+   "guardrails": null,
+   "key": "sk-SEATA",
+   "key_alias": "cap-a",
+   "key_name": "sk-...XXXX",
+   "key_type": "default",
+   "litellm_budget_table": null,
+   "max_budget": 0.5,
+   "max_parallel_requests": null,
+   "mcp_rpm_limit": null,
+   "metadata": {
+    "seat": "cap-a"
+   },
+   "model_max_budget": {},
+   "model_rpm_limit": null,
+   "model_tpm_limit": null,
+   "models": [
+    "local"
+   ],
+   "object_permission": null,
+   "organization_id": null,
+   "permissions": {},
+   "policies": null,
+   "project_id": null,
+   "prompts": null,
+   "router_settings": {
+    "allowed_fails": null,
+    "context_window_fallbacks": null,
+    "cooldown_time": null,
+    "enable_tag_filtering": null,
+    "fallbacks": null,
+    "max_retries": null,
+    "model_group_affinity_config": null,
+    "model_group_alias": {},
+    "model_group_retry_policy": null,
+    "num_retries": null,
+    "optional_pre_call_checks": null,
+    "retry_after": null,
+    "retry_policy": null,
+    "routing_groups": null,
+    "routing_strategy": null,
+    "routing_strategy_args": null,
+    "tag_routing_prefix": null,
+    "timeout": null,
+    "weights": null
+   },
+   "rpm_limit": null,
+   "rpm_limit_type": null,
+   "spend": 0.0,
+   "tag_rpm_limit": null,
+   "tags": null,
+   "team_id": null,
+   "throttle_on_budget_exceeded": null,
+   "token": "HASH62cc5e",
+   "token_id": "HASH62cc5e",
+   "tpd_limit": null,
+   "tpm_limit": null,
+   "tpm_limit_type": null,
+   "updated_at": "2026-10-31T21:27:56.354000Z",
+   "updated_by": "default_user_id",
+   "user_id": null
+  },
+  "method": "POST",
+  "path": "/key/generate",
+  "request": {
+   "budget_duration": "1d",
+   "duration": "1h",
+   "key_alias": "cap-a",
+   "max_budget": 0.5,
+   "metadata": {
+    "seat": "cap-a"
+   },
+   "models": [
+    "local"
+   ]
+  },
+  "status": 200,
+  "text": null
+ },
+ "generate_seat_key": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error, Only proxy admin can be used to generate, delete, update info for new keys/users/teams. Route=/key/generate. Your role=unknown. Your user_id=*******",
+    "param": "None",
+    "type": "auth_error"
+   }
+  },
+  "method": "POST",
+  "path": "/key/generate",
+  "request": {
+   "duration": "1h",
+   "key_alias": "cap-x",
+   "max_budget": 1,
+   "metadata": {
+    "seat": "cap-k"
+   },
+   "models": [
+    "local"
+   ]
+  },
+  "status": 401,
+  "text": null
+ },
+ "generate_taken": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "400",
+    "message": "Key with alias 'cap-a' already exists. Unique key aliases across all keys are required.",
+    "param": "key_alias",
+    "type": "bad_request_error"
+   }
+  },
+  "method": "POST",
+  "path": "/key/generate",
+  "request": {
+   "budget_duration": "1d",
+   "duration": "1h",
+   "key_alias": "cap-a",
+   "max_budget": 0.5,
+   "metadata": {
+    "seat": "cap-a"
+   },
+   "models": [
+    "local"
+   ]
+  },
+  "status": 400,
+  "text": null
+ },
+ "generate_wrong_master": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error, Invalid proxy server token passed. Received API Key = sk-...XXXX, Key Hash (Token) =HASH6ad16e. Unable to find token in cache or `LiteLLM_VerificationTokenTable`",
+    "param": "key",
+    "type": "token_not_found_in_db"
+   }
+  },
+  "method": "POST",
+  "path": "/key/generate",
+  "request": {
+   "budget_duration": "1d",
+   "duration": "1h",
+   "key_alias": "cap-a",
+   "max_budget": 0.5,
+   "metadata": {
+    "seat": "cap-a"
+   },
+   "models": [
+    "local"
+   ]
+  },
+  "status": 401,
+  "text": null
+ },
+ "generate_zero": {
+  "content_type": "application/json",
+  "json": {
+   "access_group_ids": [],
+   "agent_id": null,
+   "aliases": {},
+   "allowed_cache_controls": [],
+   "allowed_passthrough_routes": null,
+   "allowed_routes": [],
+   "allowed_vector_store_indexes": null,
+   "blocked": null,
+   "budget_duration": null,
+   "budget_fallbacks": {},
+   "budget_id": null,
+   "budget_limits": null,
+   "config": {},
+   "created_at": "2026-10-31T21:27:56.381000Z",
+   "created_by": "default_user_id",
+   "default_estimated_output_tokens": null,
+   "default_estimated_output_tokens_per_model": null,
+   "denied_passthrough_routes": null,
+   "disable_global_guardrails": null,
+   "duration": null,
+   "enable_prompt_caching": null,
+   "end_user_budget_id": null,
+   "enforced_params": null,
+   "expires": "2026-10-31T22:27:56.378938Z",
+   "guardrails": null,
+   "key": "sk-SEATB",
+   "key_alias": "cap-b",
+   "key_name": "sk-...XXXX",
+   "key_type": "default",
+   "litellm_budget_table": null,
+   "max_budget": 0.0,
+   "max_parallel_requests": null,
+   "mcp_rpm_limit": null,
+   "metadata": {
+    "seat": "cap-b"
+   },
+   "model_max_budget": {},
+   "model_rpm_limit": null,
+   "model_tpm_limit": null,
+   "models": [
+    "local"
+   ],
+   "object_permission": null,
+   "organization_id": null,
+   "permissions": {},
+   "policies": null,
+   "project_id": null,
+   "prompts": null,
+   "router_settings": {
+    "allowed_fails": null,
+    "context_window_fallbacks": null,
+    "cooldown_time": null,
+    "enable_tag_filtering": null,
+    "fallbacks": null,
+    "max_retries": null,
+    "model_group_affinity_config": null,
+    "model_group_alias": {},
+    "model_group_retry_policy": null,
+    "num_retries": null,
+    "optional_pre_call_checks": null,
+    "retry_after": null,
+    "retry_policy": null,
+    "routing_groups": null,
+    "routing_strategy": null,
+    "routing_strategy_args": null,
+    "tag_routing_prefix": null,
+    "timeout": null,
+    "weights": null
+   },
+   "rpm_limit": null,
+   "rpm_limit_type": null,
+   "spend": 0.0,
+   "tag_rpm_limit": null,
+   "tags": null,
+   "team_id": null,
+   "throttle_on_budget_exceeded": null,
+   "token": "HASHec466b",
+   "token_id": "HASHec466b",
+   "tpd_limit": null,
+   "tpm_limit": null,
+   "tpm_limit_type": null,
+   "updated_at": "2026-10-31T21:27:56.381000Z",
+   "updated_by": "default_user_id",
+   "user_id": null
+  },
+  "method": "POST",
+  "path": "/key/generate",
+  "request": {
+   "duration": "1h",
+   "key_alias": "cap-b",
+   "max_budget": 0,
+   "metadata": {
+    "seat": "cap-b"
+   },
+   "models": [
+    "local"
+   ]
+  },
+  "status": 200,
+  "text": null
+ },
+ "key_list_alias": {
+  "content_type": "application/json",
+  "json": {
+   "current_page": 1,
+   "keys": [
+    {
+     "access_group_ids": [],
+     "agent_id": null,
+     "aliases": {},
+     "allowed_cache_controls": [],
+     "allowed_model_region": null,
+     "allowed_routes": [],
+     "api_key": null,
+     "auto_rotate": false,
+     "blocked": null,
+     "budget_duration": "1d",
+     "budget_fallbacks": {},
+     "budget_id": null,
+     "budget_limits": null,
+     "budget_reset_at": "2026-11-01T00:00:00Z",
+     "config": {},
+     "created_at": "2026-10-31T21:27:56.354000Z",
+     "created_by": "default_user_id",
+     "created_by_user": null,
+     "end_user_id": null,
+     "end_user_max_budget": null,
+     "end_user_model_max_budget": null,
+     "end_user_object_permission": null,
+     "end_user_rpm_limit": null,
+     "end_user_tpd_limit": null,
+     "end_user_tpm_limit": null,
+     "expires": "2026-10-31T22:27:56.352000Z",
+     "is_session_token": false,
+     "jwt_claims": null,
+     "key_alias": "cap-a",
+     "key_name": "sk-...XXXX",
+     "key_rotation_at": null,
+     "key_type": "default",
+     "last_active": "2026-10-31T21:28:01.396000Z",
+     "last_refreshed_at": null,
+     "last_rotation_at": null,
+     "litellm_budget_table": null,
+     "max_budget": 0.5,
+     "max_parallel_requests": null,
+     "metadata": {
+      "seat": "cap-a"
+     },
+     "model_max_budget": {},
+     "model_spend": {},
+     "models": [
+      "local"
+     ],
+     "object_permission": null,
+     "object_permission_id": null,
+     "org_id": null,
+     "organization_alias": null,
+     "organization_max_budget": null,
+     "organization_metadata": null,
+     "organization_rpm_limit": null,
+     "organization_tpm_limit": null,
+     "parent_otel_span": null,
+     "permissions": {},
+     "project_alias": null,
+     "project_id": null,
+     "project_metadata": null,
+     "request_route": null,
+     "rotation_count": 0,
+     "rotation_interval": null,
+     "router_settings": {},
+     "rpm_limit": null,
+     "rpm_limit_per_model": null,
+     "settings_updated_at": null,
+     "soft_budget": null,
+     "soft_budget_cooldown": false,
+     "spend": 0.0,
+     "team_alias": null,
+     "team_blocked": false,
+     "team_id": null,
+     "team_max_budget": null,
+     "team_member": null,
+     "team_member_rpm_limit": null,
+     "team_member_spend": null,
+     "team_member_tpm_limit": null,
+     "team_metadata": null,
+     "team_model_aliases": null,
+     "team_model_max_budget": null,
+     "team_models": [],
+     "team_object_permission": null,
+     "team_object_permission_id": null,
+     "team_rpm_limit": null,
+     "team_soft_budget": null,
+     "team_spend": null,
+     "team_tpd_limit": null,
+     "team_tpm_limit": null,
+     "token": "HASH62cc5e",
+     "total_spend": 0.0,
+     "tpd_limit": null,
+     "tpm_limit": null,
+     "tpm_limit_per_model": null,
+     "updated_at": "2026-10-31T21:28:01.392000Z",
+     "updated_by": "default_user_id",
+     "user": null,
+     "user_email": null,
+     "user_id": null,
+     "user_max_budget": null,
+     "user_model_max_budget": null,
+     "user_role": null,
+     "user_rpm_limit": null,
+     "user_spend": null,
+     "user_tpm_limit": null
+    }
+   ],
+   "total_count": 1,
+   "total_pages": 1
+  },
+  "method": "GET",
+  "path": "/key/list?return_full_object=true&key_alias=cap-a",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "key_list_alias_none": {
+  "content_type": "application/json",
+  "json": {
+   "current_page": 1,
+   "keys": [],
+   "total_count": 0,
+   "total_pages": 0
+  },
+  "method": "GET",
+  "path": "/key/list?return_full_object=true&key_alias=cap-z",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "key_list_expired": {
+  "content_type": "application/json",
+  "json": {
+   "current_page": 1,
+   "keys": [
+    {
+     "access_group_ids": [],
+     "agent_id": null,
+     "aliases": {},
+     "allowed_cache_controls": [],
+     "allowed_model_region": null,
+     "allowed_routes": [],
+     "api_key": null,
+     "auto_rotate": false,
+     "blocked": null,
+     "budget_duration": null,
+     "budget_fallbacks": {},
+     "budget_id": null,
+     "budget_limits": null,
+     "budget_reset_at": null,
+     "config": {},
+     "created_at": "2026-10-31T21:28:08.799000Z",
+     "created_by": "default_user_id",
+     "created_by_user": null,
+     "end_user_id": null,
+     "end_user_max_budget": null,
+     "end_user_model_max_budget": null,
+     "end_user_object_permission": null,
+     "end_user_rpm_limit": null,
+     "end_user_tpd_limit": null,
+     "end_user_tpm_limit": null,
+     "expires": "2026-10-31T21:28:09.797000Z",
+     "is_session_token": false,
+     "jwt_claims": null,
+     "key_alias": "cap-e",
+     "key_name": "sk-...XXXX",
+     "key_rotation_at": null,
+     "key_type": "default",
+     "last_active": null,
+     "last_refreshed_at": null,
+     "last_rotation_at": null,
+     "litellm_budget_table": null,
+     "max_budget": 1.0,
+     "max_parallel_requests": null,
+     "metadata": {
+      "seat": "cap-e"
+     },
+     "model_max_budget": {},
+     "model_spend": {},
+     "models": [
+      "local"
+     ],
+     "object_permission": null,
+     "object_permission_id": null,
+     "org_id": null,
+     "organization_alias": null,
+     "organization_max_budget": null,
+     "organization_metadata": null,
+     "organization_rpm_limit": null,
+     "organization_tpm_limit": null,
+     "parent_otel_span": null,
+     "permissions": {},
+     "project_alias": null,
+     "project_id": null,
+     "project_metadata": null,
+     "request_route": null,
+     "rotation_count": 0,
+     "rotation_interval": null,
+     "router_settings": {},
+     "rpm_limit": null,
+     "rpm_limit_per_model": null,
+     "settings_updated_at": null,
+     "soft_budget": null,
+     "soft_budget_cooldown": false,
+     "spend": 0.0,
+     "team_alias": null,
+     "team_blocked": false,
+     "team_id": null,
+     "team_max_budget": null,
+     "team_member": null,
+     "team_member_rpm_limit": null,
+     "team_member_spend": null,
+     "team_member_tpm_limit": null,
+     "team_metadata": null,
+     "team_model_aliases": null,
+     "team_model_max_budget": null,
+     "team_models": [],
+     "team_object_permission": null,
+     "team_object_permission_id": null,
+     "team_rpm_limit": null,
+     "team_soft_budget": null,
+     "team_spend": null,
+     "team_tpd_limit": null,
+     "team_tpm_limit": null,
+     "token": "HASH7b52d8",
+     "total_spend": 0.0,
+     "tpd_limit": null,
+     "tpm_limit": null,
+     "tpm_limit_per_model": null,
+     "updated_at": "2026-10-31T21:28:08.799000Z",
+     "updated_by": "default_user_id",
+     "user": null,
+     "user_email": null,
+     "user_id": null,
+     "user_max_budget": null,
+     "user_model_max_budget": null,
+     "user_role": null,
+     "user_rpm_limit": null,
+     "user_spend": null,
+     "user_tpm_limit": null
+    }
+   ],
+   "total_count": 1,
+   "total_pages": 1
+  },
+  "method": "GET",
+  "path": "/key/list?return_full_object=true&key_alias=cap-e",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "key_list_page1": {
+  "content_type": "application/json",
+  "json": {
+   "current_page": 1,
+   "keys": [
+    {
+     "access_group_ids": [],
+     "agent_id": null,
+     "aliases": {},
+     "allowed_cache_controls": [],
+     "allowed_model_region": null,
+     "allowed_routes": [],
+     "api_key": null,
+     "auto_rotate": false,
+     "blocked": null,
+     "budget_duration": null,
+     "budget_fallbacks": {},
+     "budget_id": null,
+     "budget_limits": null,
+     "budget_reset_at": null,
+     "config": {},
+     "created_at": "2026-10-31T21:27:56.381000Z",
+     "created_by": "default_user_id",
+     "created_by_user": null,
+     "end_user_id": null,
+     "end_user_max_budget": null,
+     "end_user_model_max_budget": null,
+     "end_user_object_permission": null,
+     "end_user_rpm_limit": null,
+     "end_user_tpd_limit": null,
+     "end_user_tpm_limit": null,
+     "expires": "2026-10-31T22:27:56.378000Z",
+     "is_session_token": false,
+     "jwt_claims": null,
+     "key_alias": "cap-b",
+     "key_name": "sk-...XXXX",
+     "key_rotation_at": null,
+     "key_type": "default",
+     "last_active": "2026-10-31T21:28:01.396000Z",
+     "last_refreshed_at": null,
+     "last_rotation_at": null,
+     "litellm_budget_table": null,
+     "max_budget": 0.0,
+     "max_parallel_requests": null,
+     "metadata": {
+      "seat": "cap-b"
+     },
+     "model_max_budget": {},
+     "model_spend": {},
+     "models": [
+      "local"
+     ],
+     "object_permission": null,
+     "object_permission_id": null,
+     "org_id": null,
+     "organization_alias": null,
+     "organization_max_budget": null,
+     "organization_metadata": null,
+     "organization_rpm_limit": null,
+     "organization_tpm_limit": null,
+     "parent_otel_span": null,
+     "permissions": {},
+     "project_alias": null,
+     "project_id": null,
+     "project_metadata": null,
+     "request_route": null,
+     "rotation_count": 0,
+     "rotation_interval": null,
+     "router_settings": {},
+     "rpm_limit": null,
+     "rpm_limit_per_model": null,
+     "settings_updated_at": null,
+     "soft_budget": null,
+     "soft_budget_cooldown": false,
+     "spend": 0.0,
+     "team_alias": null,
+     "team_blocked": false,
+     "team_id": null,
+     "team_max_budget": null,
+     "team_member": null,
+     "team_member_rpm_limit": null,
+     "team_member_spend": null,
+     "team_member_tpm_limit": null,
+     "team_metadata": null,
+     "team_model_aliases": null,
+     "team_model_max_budget": null,
+     "team_models": [],
+     "team_object_permission": null,
+     "team_object_permission_id": null,
+     "team_rpm_limit": null,
+     "team_soft_budget": null,
+     "team_spend": null,
+     "team_tpd_limit": null,
+     "team_tpm_limit": null,
+     "token": "HASHec466b",
+     "total_spend": 0.0,
+     "tpd_limit": null,
+     "tpm_limit": null,
+     "tpm_limit_per_model": null,
+     "updated_at": "2026-10-31T21:28:01.392000Z",
+     "updated_by": "default_user_id",
+     "user": null,
+     "user_email": null,
+     "user_id": null,
+     "user_max_budget": null,
+     "user_model_max_budget": null,
+     "user_role": null,
+     "user_rpm_limit": null,
+     "user_spend": null,
+     "user_tpm_limit": null
+    },
+    {
+     "access_group_ids": [],
+     "agent_id": null,
+     "aliases": {},
+     "allowed_cache_controls": [],
+     "allowed_model_region": null,
+     "allowed_routes": [],
+     "api_key": null,
+     "auto_rotate": false,
+     "blocked": null,
+     "budget_duration": "1d",
+     "budget_fallbacks": {},
+     "budget_id": null,
+     "budget_limits": null,
+     "budget_reset_at": "2026-11-01T00:00:00Z",
+     "config": {},
+     "created_at": "2026-10-31T21:27:56.354000Z",
+     "created_by": "default_user_id",
+     "created_by_user": null,
+     "end_user_id": null,
+     "end_user_max_budget": null,
+     "end_user_model_max_budget": null,
+     "end_user_object_permission": null,
+     "end_user_rpm_limit": null,
+     "end_user_tpd_limit": null,
+     "end_user_tpm_limit": null,
+     "expires": "2026-10-31T22:27:56.352000Z",
+     "is_session_token": false,
+     "jwt_claims": null,
+     "key_alias": "cap-a",
+     "key_name": "sk-...XXXX",
+     "key_rotation_at": null,
+     "key_type": "default",
+     "last_active": "2026-10-31T21:28:01.396000Z",
+     "last_refreshed_at": null,
+     "last_rotation_at": null,
+     "litellm_budget_table": null,
+     "max_budget": 0.5,
+     "max_parallel_requests": null,
+     "metadata": {
+      "seat": "cap-a"
+     },
+     "model_max_budget": {},
+     "model_spend": {},
+     "models": [
+      "local"
+     ],
+     "object_permission": null,
+     "object_permission_id": null,
+     "org_id": null,
+     "organization_alias": null,
+     "organization_max_budget": null,
+     "organization_metadata": null,
+     "organization_rpm_limit": null,
+     "organization_tpm_limit": null,
+     "parent_otel_span": null,
+     "permissions": {},
+     "project_alias": null,
+     "project_id": null,
+     "project_metadata": null,
+     "request_route": null,
+     "rotation_count": 0,
+     "rotation_interval": null,
+     "router_settings": {},
+     "rpm_limit": null,
+     "rpm_limit_per_model": null,
+     "settings_updated_at": null,
+     "soft_budget": null,
+     "soft_budget_cooldown": false,
+     "spend": 0.0,
+     "team_alias": null,
+     "team_blocked": false,
+     "team_id": null,
+     "team_max_budget": null,
+     "team_member": null,
+     "team_member_rpm_limit": null,
+     "team_member_spend": null,
+     "team_member_tpm_limit": null,
+     "team_metadata": null,
+     "team_model_aliases": null,
+     "team_model_max_budget": null,
+     "team_models": [],
+     "team_object_permission": null,
+     "team_object_permission_id": null,
+     "team_rpm_limit": null,
+     "team_soft_budget": null,
+     "team_spend": null,
+     "team_tpd_limit": null,
+     "team_tpm_limit": null,
+     "token": "HASH62cc5e",
+     "total_spend": 0.0,
+     "tpd_limit": null,
+     "tpm_limit": null,
+     "tpm_limit_per_model": null,
+     "updated_at": "2026-10-31T21:28:01.392000Z",
+     "updated_by": "default_user_id",
+     "user": null,
+     "user_email": null,
+     "user_id": null,
+     "user_max_budget": null,
+     "user_model_max_budget": null,
+     "user_role": null,
+     "user_rpm_limit": null,
+     "user_spend": null,
+     "user_tpm_limit": null
+    }
+   ],
+   "total_count": 2,
+   "total_pages": 1
+  },
+  "method": "GET",
+  "path": "/key/list?return_full_object=true&size=100&page=1",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "key_list_plain": {
+  "content_type": "application/json",
+  "json": {
+   "current_page": 1,
+   "keys": [
+    "HASHec466b",
+    "HASH62cc5e"
+   ],
+   "total_count": 2,
+   "total_pages": 1
+  },
+  "method": "GET",
+  "path": "/key/list",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "key_list_seat_key": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "403",
+    "message": "You are not authorized to access this endpoint. No 'user_id' is associated with your API key.",
+    "param": "user_id",
+    "type": "bad_request_error"
+   }
+  },
+  "method": "GET",
+  "path": "/key/list",
+  "request": null,
+  "status": 403,
+  "text": null
+ },
+ "key_list_size1_page2": {
+  "content_type": "application/json",
+  "json": {
+   "current_page": 2,
+   "keys": [
+    {
+     "access_group_ids": [],
+     "agent_id": null,
+     "aliases": {},
+     "allowed_cache_controls": [],
+     "allowed_model_region": null,
+     "allowed_routes": [],
+     "api_key": null,
+     "auto_rotate": false,
+     "blocked": null,
+     "budget_duration": "1d",
+     "budget_fallbacks": {},
+     "budget_id": null,
+     "budget_limits": null,
+     "budget_reset_at": "2026-11-01T00:00:00Z",
+     "config": {},
+     "created_at": "2026-10-31T21:27:56.354000Z",
+     "created_by": "default_user_id",
+     "created_by_user": null,
+     "end_user_id": null,
+     "end_user_max_budget": null,
+     "end_user_model_max_budget": null,
+     "end_user_object_permission": null,
+     "end_user_rpm_limit": null,
+     "end_user_tpd_limit": null,
+     "end_user_tpm_limit": null,
+     "expires": "2026-10-31T22:27:56.352000Z",
+     "is_session_token": false,
+     "jwt_claims": null,
+     "key_alias": "cap-a",
+     "key_name": "sk-...XXXX",
+     "key_rotation_at": null,
+     "key_type": "default",
+     "last_active": "2026-10-31T21:28:01.396000Z",
+     "last_refreshed_at": null,
+     "last_rotation_at": null,
+     "litellm_budget_table": null,
+     "max_budget": 0.5,
+     "max_parallel_requests": null,
+     "metadata": {
+      "seat": "cap-a"
+     },
+     "model_max_budget": {},
+     "model_spend": {},
+     "models": [
+      "local"
+     ],
+     "object_permission": null,
+     "object_permission_id": null,
+     "org_id": null,
+     "organization_alias": null,
+     "organization_max_budget": null,
+     "organization_metadata": null,
+     "organization_rpm_limit": null,
+     "organization_tpm_limit": null,
+     "parent_otel_span": null,
+     "permissions": {},
+     "project_alias": null,
+     "project_id": null,
+     "project_metadata": null,
+     "request_route": null,
+     "rotation_count": 0,
+     "rotation_interval": null,
+     "router_settings": {},
+     "rpm_limit": null,
+     "rpm_limit_per_model": null,
+     "settings_updated_at": null,
+     "soft_budget": null,
+     "soft_budget_cooldown": false,
+     "spend": 0.0,
+     "team_alias": null,
+     "team_blocked": false,
+     "team_id": null,
+     "team_max_budget": null,
+     "team_member": null,
+     "team_member_rpm_limit": null,
+     "team_member_spend": null,
+     "team_member_tpm_limit": null,
+     "team_metadata": null,
+     "team_model_aliases": null,
+     "team_model_max_budget": null,
+     "team_models": [],
+     "team_object_permission": null,
+     "team_object_permission_id": null,
+     "team_rpm_limit": null,
+     "team_soft_budget": null,
+     "team_spend": null,
+     "team_tpd_limit": null,
+     "team_tpm_limit": null,
+     "token": "HASH62cc5e",
+     "total_spend": 0.0,
+     "tpd_limit": null,
+     "tpm_limit": null,
+     "tpm_limit_per_model": null,
+     "updated_at": "2026-10-31T21:28:01.392000Z",
+     "updated_by": "default_user_id",
+     "user": null,
+     "user_email": null,
+     "user_id": null,
+     "user_max_budget": null,
+     "user_model_max_budget": null,
+     "user_role": null,
+     "user_rpm_limit": null,
+     "user_spend": null,
+     "user_tpm_limit": null
+    }
+   ],
+   "total_count": 2,
+   "total_pages": 2
+  },
+  "method": "GET",
+  "path": "/key/list?return_full_object=true&size=1&page=2",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "key_list_wrong_master": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error, Invalid proxy server token passed. Received API Key = sk-...XXXX, Key Hash (Token) =HASH6ad16e. Unable to find token in cache or `LiteLLM_VerificationTokenTable`",
+    "param": "key",
+    "type": "token_not_found_in_db"
+   }
+  },
+  "method": "GET",
+  "path": "/key/list",
+  "request": null,
+  "status": 401,
+  "text": null
+ },
+ "liveliness": {
+  "content_type": "application/json",
+  "json": "I'm alive!",
+  "method": "GET",
+  "path": "/health/liveliness",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "models": {
+  "content_type": "application/json",
+  "json": {
+   "data": [
+    {
+     "created": 1677610602,
+     "id": "local",
+     "object": "model",
+     "owned_by": "openai"
+    },
+    {
+     "created": 1677610602,
+     "id": "claude",
+     "max_input_tokens": 1000000,
+     "max_output_tokens": 128000,
+     "mode": "chat",
+     "object": "model",
+     "owned_by": "openai"
+    }
+   ],
+   "object": "list"
+  },
+  "method": "GET",
+  "path": "/v1/models",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "models_over_budget": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "422",
+    "message": "Budget has been exceeded! Key=cap-b (sk-...XXXX) Current cost: 0.0, Max budget: 0.0",
+    "param": null,
+    "type": "budget_exceeded"
+   }
+  },
+  "method": "GET",
+  "path": "/v1/models",
+  "request": null,
+  "status": 422,
+  "text": null
+ },
+ "models_seat": {
+  "content_type": "application/json",
+  "json": {
+   "data": [
+    {
+     "created": 1677610602,
+     "id": "local",
+     "object": "model",
+     "owned_by": "openai"
+    }
+   ],
+   "object": "list"
+  },
+  "method": "GET",
+  "path": "/v1/models",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "readiness_details": {
+  "content_type": "application/json",
+  "json": {
+   "cache": null,
+   "db": "connected",
+   "is_detailed_debug": false,
+   "litellm_version": "1.106.6",
+   "log_level": "WARNING",
+   "show_env_credential_login_warning": true,
+   "show_no_redis_warning": false,
+   "status": "healthy",
+   "success_callbacks": [
+    "sync_deployment_callback_on_success",
+    "_PROXY_VirtualKeyModelMaxBudgetLimiter",
+    "_ProxyDBLogger",
+    "ShadowEvalLogger",
+    "_PROXY_MaxParallelRequestsHandler_v3",
+    "_PROXY_CacheControlCheck",
+    "ResponsesIDSecurity",
+    "SkillsInjectionHook",
+    "_PROXY_MaxIterationsHandler",
+    "_PROXY_MaxBudgetPerSessionHandler",
+    "_PROXY_SensitiveDataRoutingHandler",
+    "PromptCacheObserver",
+    "AutoRouterBaselineCache",
+    "ServiceLogging"
+   ],
+   "use_aiohttp_transport": true
+  },
+  "method": "GET",
+  "path": "/health/readiness/details",
+  "request": null,
+  "status": 200,
+  "text": null
+ },
+ "readiness_details_nokey": {
+  "content_type": "application/json",
+  "json": {
+   "error": {
+    "code": "401",
+    "message": "Authentication Error, No api key passed in.",
+    "param": "None",
+    "type": "auth_error"
+   }
+  },
+  "method": "GET",
+  "path": "/health/readiness/details",
+  "request": null,
+  "status": 401,
+  "text": null
+ },
+ "unknown_path": {
+  "content_type": "application/json",
+  "json": {
+   "detail": "Not Found"
+  },
+  "method": "GET",
+  "path": "/no/such/path",
+  "request": null,
+  "status": 404,
+  "text": null
+ }
+}

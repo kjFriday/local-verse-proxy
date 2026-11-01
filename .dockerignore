@@ -4,6 +4,7 @@
 # never secrets or state, even inside those folders.
 *
 !go.mod
+!go.sum
 !cmd
 !internal
 !gui

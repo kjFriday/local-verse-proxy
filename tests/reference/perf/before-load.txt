@@ -1,0 +1,10 @@
+[ 1 viewers] page load (6 GETs)  p50    2.02 p95    3.18 max  241.42 ms n=4461
+[ 1 viewers] /api/state 200 gz  p50    0.19 p95    0.30 max    7.52 ms n=46106
+[ 1 viewers] /api/state 304     p50    0.18 p95    0.27 max    5.42 ms n=49282
+[20 viewers] page load (6 GETs)  p50   29.55 p95   40.20 max   75.36 ms n=6555
+[20 viewers] /api/state 200 gz  p50    3.93 p95    9.37 max   27.18 ms n=44873
+[20 viewers] /api/state 304     p50    3.27 p95    8.58 max   28.54 ms n=52041
+[ 0 bg] mint   p50  115.94 p95  198.58 max  198.58 ms n=15
+[ 0 bg] revoke p50  101.14 p95  121.29 max  121.29 ms n=15
+[20 bg] mint   p50  137.99 p95  164.38 max  164.38 ms n=15
+[20 bg] revoke p50  127.97 p95  217.02 max  217.02 ms n=15

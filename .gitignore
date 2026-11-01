@@ -7,6 +7,8 @@ seats.env*
 game/office.db*
 __pycache__/
 # Built Go programs (README.md, "The Go version").
+/lvp
+/lvp.exe
 /mint-key
 /mint-key.exe
 dist/

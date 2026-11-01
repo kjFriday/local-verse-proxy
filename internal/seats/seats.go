@@ -26,8 +26,9 @@ type LookupFunc func(name string) (string, bool)
 type File struct {
 	Path string // where it was read from, as given
 
-	vals map[string]string
-	env  LookupFunc
+	vals  map[string]string
+	names []string
+	env   LookupFunc
 }
 
 // Find picks the seats.env to use: the path in SEATS_ENV if that is
@@ -107,12 +108,45 @@ func Load(path string, env LookupFunc) (*File, error) {
 		}
 		return nil, fmt.Errorf("cannot read %s: %v", path, err)
 	}
-	vals, err := Parse(string(b), env)
+	vals, names, err := parse(string(b), env)
 	if err != nil {
 		return nil, fmt.Errorf("%s %w", path, err)
 	}
-	return &File{Path: path, vals: vals, env: env}, nil
+	return &File{Path: path, vals: vals, names: names, env: env}, nil
 }
+
+// FromEnviron is settings from the environment only (--docker), given
+// as os.Environ() gives it: NAME=value. Path is "". Get and Lookup
+// read environ. A name given twice keeps its first value, as the
+// program's own environment does. On Windows names match whatever
+// their case, as there.
+func FromEnviron(environ []string) *File {
+	vals := map[string]string{}
+	var names []string
+	for _, kv := range environ {
+		// Windows keeps a few hidden names that start with "=".
+		k := strings.IndexByte(kv[min(1, len(kv)):], '=')
+		if k < 0 {
+			continue
+		}
+		k += min(1, len(kv))
+		name := foldName(kv[:k])
+		if _, ok := vals[name]; ok {
+			continue
+		}
+		vals[name] = kv[k+1:]
+		names = append(names, kv[:k])
+	}
+	env := func(name string) (string, bool) {
+		v, ok := vals[foldName(name)]
+		return v, ok
+	}
+	return &File{env: env, names: names}
+}
+
+// Names are the names the file sets, in file order; for FromEnviron,
+// the environment's names in its order.
+func (f *File) Names() []string { return append([]string(nil), f.names...) }
 
 // Lookup finds a setting: the file's value if the file sets it, even
 // to nothing; else the environment's.
@@ -137,16 +171,20 @@ func (f *File) Get(name, def string) string {
 
 // MasterKey returns LITELLM_MASTER_KEY, after the same checks as
 // mint-key.sh: it must be set, and neither it nor LITELLM_SALT_KEY may
-// still hold the template's change-me.
+// still hold the template's change-me. The messages name the file, or
+// "the environment" for FromEnviron's settings.
 func (f *File) MasterKey() (string, error) {
+	where := f.Path
+	if where == "" {
+		where = "the environment"
+	}
 	mk := f.Get("LITELLM_MASTER_KEY", "")
 	if mk == "" {
-		return "", errors.New("LITELLM_MASTER_KEY: not set in " +
-			f.Path)
+		return "", errors.New("LITELLM_MASTER_KEY: not set in " + where)
 	}
 	if strings.Contains(mk+f.Get("LITELLM_SALT_KEY", ""), "change-me") {
 		return "", errors.New("replace the change-me values in " +
-			f.Path + " first")
+			where + " first")
 	}
 	return mk, nil
 }

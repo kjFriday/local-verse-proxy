@@ -1,0 +1,77 @@
+spend log rows for game seats: 1769
+success rows outside this office's days: 0
+failure rows (refused) per seat: {'game-blitz': 5, 'game-gia': 5, 'game-gus': 5, 'game-spike': 5}
+usage rows checked; mismatches: 0
+completions checked; score mismatches: 0
+
+per seat: points, counted, unbacked, mean eff, tokens, mana, mana/counted, pts/1k mana
+  game-fern     2442.0  62  0 1.50    46,606     619   10.0  3944.2
+  game-moss     2431.8  59  0 1.49    46,278     610   10.3  3986.7
+  game-ben      1229.5  49  0 0.96    75,752   3,029   61.8   406.0
+  game-bea      1108.7  48  0 0.97    72,915   3,105   64.7   357.1
+  game-gus       464.5  30  0 0.50    56,351   7,722  257.4    60.1
+  game-gia       413.5  38  0 0.50    55,691   7,658  201.5    54.0
+  game-spike     333.5  22  0 0.50   478,402   7,681  349.1    43.4
+  game-blitz     237.8  17  0 0.50   375,925   7,929  466.4    30.0
+  game-sid       196.5   5  5 1.43     6,030      81   16.2  2418.8
+  game-sal       127.8   4  6 1.47     5,151      69   17.2  1860.2
+
+mana per seat per day (success rows), cap 1500
+  seat         d1      d2      d3      d4      d5     
+  game-bea         649     703     584     752     417
+  game-ben         460     896     338     934     400
+  game-blitz      1590    1519    1519    1692    1609
+  game-fern        132     119     119     128     121
+  game-gia        1528    1540    1540    1546    1503
+  game-gus        1506    1552    1554    1548    1562
+  game-moss        124     112     120     120     134
+  game-sal           8       8       7      11      35
+  game-sid           7       5      11      32      27
+  game-spike      1565    1589    1511    1512    1504
+
+model mix (calls, mana):
+  game-bea     ollama_chat/office-local  149    732.5
+  game-bea     ollama_chat/office-pro     47   2372.0
+  game-ben     ollama_chat/office-local  157    777.9
+  game-ben     ollama_chat/office-pro     46   2250.7
+  game-blitz   ollama_chat/office-local  208   4061.8
+  game-blitz   ollama_chat/office-pro     19   3867.0
+  game-fern    ollama_chat/office-local  253    619.1
+  game-gia     ollama_chat/office-pro    139   7657.5
+  game-gus     ollama_chat/office-pro    139   7722.5
+  game-moss    ollama_chat/office-local  249    610.0
+  game-sal     ollama_chat/office-local   24     68.7
+  game-sid     ollama_chat/office-local   28     81.2
+  game-spike   ollama_chat/office-local  279   5423.6
+  game-spike   ollama_chat/office-pro     12   2257.6
+
+mana per quest by persona and size (all handed-in, approved):
+  balanced  large   n= 12 median    36.5 min    32.4 max   372.3 par 45
+  balanced  medium  n= 36 median    24.1 min    17.3 max   279.6 par 25
+  balanced  small   n= 49 median    11.2 min     7.5 max   160.9 par 12
+  frugal    large   n= 22 median    17.4 min    14.9 max    29.1 par 45
+  frugal    medium  n= 42 median    10.0 min     8.7 max    19.2 par 25
+  frugal    small   n= 57 median     5.0 min     3.9 max     9.1 par 12
+  gearhead  large   n= 10 median   406.8 min   326.8 max   450.4 par 45
+  gearhead  medium  n= 25 median   230.6 min   187.3 max   339.7 par 25
+  gearhead  small   n= 33 median   113.5 min    88.8 max   216.7 par 12
+  slacker   large   n=  2 median    20.8 min    20.5 max    20.8 par 45
+  slacker   medium  n=  2 median    17.5 min    10.8 max    17.5 par 25
+  slacker   small   n=  5 median     8.6 min     5.7 max     9.0 par 12
+  spammy    large   n= 10 median   369.0 min   278.4 max   626.9 par 45
+  spammy    medium  n= 10 median   231.3 min   164.1 max   354.0 par 25
+  spammy    small   n= 19 median    93.0 min    65.9 max  1127.7 par 12
+
+last answered call, s after day start (R = refused that day):
+  seat         d1     d2     d3     d4     d5    
+  game-bea        80     76     82     81     81 
+  game-ben        81     80     81     82     81 
+  game-blitz      20R    57R    25R    16R    47R
+  game-fern       82     81     81     82     82 
+  game-gia        48R    51R    51R    49R    48R
+  game-gus        47R    49R    50R    51R    49R
+  game-moss       81     74     81     80     82 
+  game-sal        16     15     10     21     55 
+  game-sid         7     11     16     49     42 
+  game-spike      38R    40R    57R    18R    59R
+refusal codes: [422]

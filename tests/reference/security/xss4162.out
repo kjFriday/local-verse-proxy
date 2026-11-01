@@ -1,0 +1,4 @@
+first: {"cards":23,"injected":[],"hostile":["\"><script>alert(3)</script>","<b>tally-b</b><img src=x onerror=alert(9)>","<img src=x onerror=alert(1)>","game-<svg/onload=alert(2)>","t-<svg/onload=alert(8)>","‮gnp.exe"],"cookie":"","allSvg":0}
+after minute redraw: {"cards":23,"injected":[],"hostile":["\"><script>alert(3)</script>","<b>tally-b</b><img src=x onerror=alert(9)>","<img src=x onerror=alert(1)>","game-<svg/onload=alert(2)>","t-<svg/onload=alert(8)>","‮gnp.exe"],"cookie":"","allSvg":0}
+tally: {"injected":["<b>tally</b>","<b>Tokens</b>","<b>Refused</b>"],"hostile":["<b>tally-b</b><img src=x onerror=alert(9)>","t-<svg/onload=alert(8)>"]}
+dialogs: [] page errors: []

@@ -1,0 +1,175 @@
+{
+ "facts": [
+  {
+   "claim": "1. Virtual keys require DATABASE_URL (Postgres) and a master_key.",
+   "verdict": "confirmed",
+   "correction": "Correct. Without a DB, /key/generate and /key/delete fail with \"DB not connected. This endpoint needs a database; set DATABASE_URL to a PostgreSQL connection string (postgresql://...)\". LiteLLM v1.106.6, which is what main-stable is today, also refuses to boot when the master key is unset, empty or \"sk-1234\". It does NOT refuse the repo's placeholder \"sk-change-me\". Virtual keys are stored as unsalted SHA-256 hashes in LiteLLM_VerificationTokenTable. Setting general_settings.database_url as well as the DATABASE_URL env var is redundant but harmless.",
+   "source": "litellm 1.106.6 source: proxy/_types.py:4457 (CommonProxyErrors.db_not_connected_error), proxy/auth/master_key_boot_check.py:203-211 (only NOT_SET/EMPTY/sha256('sk-1234') refused), proxy/_types.py:290 (hash_token = sha256); https://docs.litellm.ai/docs/proxy/virtual_keys (via search snippet; docs host was blocked in this session)"
+  },
+  {
+   "claim": "2. /key/generate accepts key_alias, models, max_budget, duration, metadata; the response has a \"key\" field.",
+   "verdict": "confirmed",
+   "correction": "All five fields are in GenerateRequestBase, and GenerateKeyResponse.key is a required str. A fake-server run showed mint-key.sh sends exactly {key_alias, models:[...], max_budget:<number>, duration, metadata:{seat}}. Points the README should mention: (a) key_alias must be unique across all keys, so minting the same seat name twice returns HTTP 400 \"Key with alias 'X' already exists. Unique key aliases across all keys are required.\"; (b) an empty models list [] means ALL models; (c) max_budget with no budget_duration is a lifetime cap, not a monthly one; (d) duration units are s, m, h, d, w, mo; (e) an over-budget key gets HTTP 422 in v1.106.6 (litellm.budget_exceeded_status_code = 422; the code comment says it was 429 before).",
+   "source": "litellm 1.106.6: proxy/_types.py:1310-1440, proxy/management_endpoints/key_management_endpoints.py:7843-7873 (_enforce_unique_key_alias), proxy/auth/auth_checks.py:4586 (empty list = all access), litellm_core_utils/duration_parser.py:64-76, litellm/__init__.py:409"
+  },
+  {
+   "claim": "3. /key/delete accepts {\"keys\": [...]} with master key auth.",
+   "verdict": "confirmed",
+   "correction": "It takes plaintext sk- keys or their hashes. It also accepts {\"key_aliases\": [...]}, which would allow revoking by seat name. Success returns {\"deleted_keys\": [...]}. An unknown key returns HTTP 404 {\"error\":\"No keys found\"}; mint-key.sh then exits 22 and prints curl's error on stderr. The deleted key is evicted from the in-memory auth cache straight away.",
+   "source": "litellm 1.106.6: proxy/management_endpoints/key_management_endpoints.py:4109-4220 (delete_key_fn docstring and example), 5030-5120 (404 'No keys found', cache eviction), proxy/_types.py:1534 (KeyRequest)"
+  },
+  {
+   "claim": "4. A key calling a model outside its \"models\" list is rejected (which HTTP status, what message).",
+   "verdict": "confirmed",
+   "correction": "It is rejected, but the status depends on the version. In current main-stable (v1.106.6) it is HTTP 403 with error.type \"key_model_access_denied\", param \"model\", and message: \"The requested model 'claude' is not available for this API key, or the model name is invalid. Check the models available to you and try again.\" The same 403 is returned for a model name that does not exist. Older releases (v1.83.14-stable and earlier) returned 401 with \"key not allowed to access model. This key can only access models=['local']. Tried to access claude\". By v1.95.0 it was already 403. The README should say \"expect 403 (401 on older LiteLLM)\" and print the status with -w '%{http_code}'.",
+   "source": "litellm 1.106.6 proxy/auth/auth_checks.py:4712-4725 (code=status.HTTP_403_FORBIDDEN), proxy/auth/model_access_denied.py:5-8; litellm 1.83.14 wheel auth_checks.py (code=status.HTTP_401_UNAUTHORIZED); litellm 1.95.0 wheel (403)"
+  },
+  {
+   "claim": "5. A deleted key gets 401 on /v1/models and /v1/chat/completions.",
+   "verdict": "confirmed",
+   "correction": "Both routes depend on user_api_key_auth. A key that is not found raises KeyNotFoundError with code 401, type token_not_found_in_db, and message \"Authentication Error, Invalid proxy server token passed. key=<sha256>, not found in db. Create key via `/key/generate` call.\" With one proxy instance it takes effect immediately, because delete clears the cache.",
+   "source": "litellm 1.106.6: proxy/proxy_server.py:11873-11876 (/v1/models, /models), 12281-12290 (/v1/chat/completions, /chat/completions), proxy/auth/resolvers/exceptions.py:22-36"
+  },
+  {
+   "claim": "6. LITELLM_SALT_KEY must not change after first use.",
+   "verdict": "confirmed",
+   "correction": "It encrypts and decrypts credentials stored in the DB. If it is unset, LiteLLM uses the master key instead, so rotating the master key then becomes the dangerous step. There is no in-place re-encryption for a salt change. Nuance for this repo: models live in config.yaml and virtual keys are unsalted SHA-256 hashes, so changing the salt would NOT invalidate seat keys. It would make any encrypted DB values unreadable, such as models or credentials added via the /ui, or MCP secrets. Keep the rule. Do not ship it empty: os.getenv returns \"\" (not None), so an empty value would be used as the salt.",
+   "source": "litellm 1.106.6 proxy/common_utils/encrypt_decrypt_utils.py:32-40 (get_salt_key falls back to master_key), proxy/common_utils/admin_ui_utils.py:85 ('Can NOT CHANGE THIS ONCE SET'); https://docs.litellm.ai/docs/proxy/master_key_rotations.md (search snippet); upstream docker/docker-compose.quickstart.yml header ('regenerating LITELLM_SALT_KEY makes credentials already stored in the database unreadable')"
+  },
+  {
+   "claim": "7. Master key must start with \"sk-\".",
+   "verdict": "confirmed",
+   "correction": "This is a documented requirement in the virtual-keys Requirements section, but v1.106.6 does not enforce it. The master key is checked with secrets.compare_digest and no prefix check. Virtual keys must start with sk-; anything else returns 401 \"LiteLLM Virtual Key expected...\". Keep the sk- prefix as the docs ask. Upstream's own generator is `sk-$(openssl rand -hex 32)`; the repo's hex 24 is also fine.",
+   "source": "https://docs.litellm.ai/docs/proxy/virtual_keys (search snippet: 'must start with sk-'); litellm 1.106.6 proxy/auth/user_api_key_auth.py:2155-2160 (compare_digest), 2215-2229 (virtual-key sk- check); proxy/auth/master_key_boot_check.py:24"
+  },
+  {
+   "claim": "8. ghcr.io/berriai/litellm:main-stable exists; the container accepts \"--config /app/config.yaml --port 4000\"; is extra env (STORE_MODEL_IN_DB) or the litellm-database image needed?",
+   "verdict": "confirmed",
+   "correction": "The GHCR manifest for main-stable returns 200 (linux/amd64 and linux/arm64). Its digest sha256:37e2daf... is identical to tag v1.106.6. The ENTRYPOINT is docker/prod_entrypoint.sh, which runs `exec litellm \"$@\"`, and the default CMD is [\"--port\",\"4000\"], so the compose command is valid. The CLI has --config/-c, --port (default 4000) and --host (default 0.0.0.0). No extra image or env is needed: the main Dockerfile already includes the Prisma CLI and engines. ghcr.io/berriai/litellm-database:main-stable also exists but is optional. STORE_MODEL_IN_DB only enables adding models through the UI/API and is not needed for virtual keys. Upstream compose files now point at docker.litellm.ai/berriai/litellm (I could not reach it from here); GHCR is still published and signed. main-stable is a moving tag, so pin a version such as v1.106.6.",
+   "source": "GHCR registry API (manifests/main-stable and v1.106.6 digests matched; litellm-database/main-stable 200); https://raw.githubusercontent.com/BerriAI/litellm/main/Dockerfile (lines 114-186), docker/prod_entrypoint.sh, docker/Dockerfile.database; litellm 1.106.6 proxy/proxy_cli.py:741-817; proxy/proxy_server.py:11025 (STORE_MODEL_IN_DB)"
+  },
+  {
+   "claim": "9. compose env_file usage is valid as written; Postgres hostname \"db\" matches DATABASE_URL.",
+   "verdict": "confirmed",
+   "correction": "`docker compose config` (Compose v5.6.1) renders cleanly with a copy of seats.env.example, and \"db\" is the service name on the default network. Caveats for the README: (a) env_file loads EVERY seats.env variable into BOTH containers, so the db container also gets the master key and the Anthropic key; (b) env_file does not feed ${...} interpolation, so LITELLM_TAG placed in seats.env is ignored (verified) and must go in the shell or a .env file; (c) a missing seats.env stops compose with \"env file .../seats.env not found\"; (d) POSTGRES_PASSWORD only takes effect the first time the pgdata volume is created, and editing it later breaks DATABASE_URL; (e) special characters in the password must be URL-encoded in DATABASE_URL.",
+   "source": "local: docker compose config in <scratchpad>/cc (exit 0; db service env shows LITELLM_MASTER_KEY, ANTHROPIC_API_KEY); LITELLM_TAG test (seats.env value ignored, shell value used)"
+  },
+  {
+   "claim": "10. The proxy exposes an OpenAI-compatible API at /v1, so seats can use any OpenAI client with base URL http://<host>:4000.",
+   "verdict": "confirmed",
+   "correction": "Routes are registered both with and without the /v1 prefix (/v1/chat/completions and /chat/completions, /v1/models and /models, /v1/embeddings and /embeddings). So base_url http://<host>:4000 and http://<host>:4000/v1 both work, and the api_key is the seat's sk- key. The admin UI at http://<host>:4000/ui is reachable on the same port (login uses the master key).",
+   "source": "litellm 1.106.6 proxy/proxy_server.py:11873-11876, 12281-12295, 12628-12634, 1116 (ui_link)"
+  },
+  {
+   "claim": "11. \"ollama/<model>\" with api_base works; what \"drop_params: true\" means.",
+   "verdict": "confirmed",
+   "correction": "ollama/ with api_base works; it calls Ollama's /api/generate. LiteLLM also reads OLLAMA_API_BASE by itself. The LiteLLM docs recommend ollama_chat/<model>, which calls /api/chat, for better chat responses. Ollama binds 127.0.0.1:11434 by default, so the Ollama box needs OLLAMA_HOST=0.0.0.0. Ollama has no auth, so seats could bypass the proxy unless the Ollama box is firewalled to accept only the proxy. ollama/<local-model> is priced at $0, so budgets never limit the local model. drop_params: true makes LiteLLM silently drop OpenAI params the target provider does not support. Without it (the default is false) such calls fail with UnsupportedParamsError (HTTP 400).",
+   "source": "litellm 1.106.6 llms/ollama/common_utils.py:78-85, model_prices_and_context_window_backup.json; https://docs.litellm.ai/docs/providers/ollama (search snippet: 'We recommend using ollama_chat for better responses'); https://docs.litellm.ai/docs/completion/drop_params (search snippet); https://github.com/ollama/ollama/blob/main/docs/faq.md"
+  },
+  {
+   "claim": "12. curl \"-H @-\" reads headers from stdin (minimum curl version).",
+   "verdict": "confirmed",
+   "correction": "-H @file / @- arrived in curl 7.55.0. A local test with curl 8.5.0 showed `-H @- <<< \"Authorization: Bearer ...\"` arriving as the Authorization header. However, the script also uses --fail-with-body, which needs curl 7.76.0 or later. 7.76.0 is therefore the real minimum; Ubuntu 20.04's curl 7.68 would fail with \"option --fail-with-body: is unknown\". The master key never appears in argv. With bash older than 5.1 (macOS's /bin/bash 3.2), here-strings go through a short-lived 0600 temp file.",
+   "source": "https://daniel.haxx.se/blog/2017/06/16/curl-read-headers-from-file/; https://android.googlesource.com/platform/external/curl/+/277486b6b/docs/cmdline-opts/fail-with-body.d ('Added in 7.76.0'); local test via <scratchpad>/echo_srv.py"
+  },
+  {
+   "claim": "Extra: anthropic/<hosted-model> is a model LiteLLM can price, so spend and budgets apply to it.",
+   "verdict": "confirmed",
+   "correction": "<hosted-model> is in the v1.106.6 cost map (input $2e-06/token), so max_budget does limit the \"claude\" model.",
+   "source": "litellm 1.106.6 model_prices_and_context_window_backup.json"
+  },
+  {
+   "claim": "Note on verification method",
+   "verdict": "unverified",
+   "correction": "docs.litellm.ai and litellm.vercel.app are not in this session's allowed network domains, so I could not fetch doc pages directly. Doc statements come from web-search snippets. Behavior was checked against the source of the litellm 1.106.6 wheel from PyPI, which is the same version as the current ghcr main-stable digest, and against GitHub raw files. No container was run (no Docker daemon, and GHCR blob downloads are blocked).",
+   "source": "WebFetch ENOTFOUND errors; pip download litellm==1.106.6 extracted to <scratchpad>/src"
+  }
+ ],
+ "file_issues": [
+  {
+   "file": "mint-key.sh",
+   "issue": "Line 60 `post /key/generate \"$body\" | jq -r '.key'`: on any API error (for example a duplicate seat alias, which returns 400), curl --fail-with-body pipes the error JSON into jq. jq prints the literal string \"null\" to stdout and the real error message is lost. Tested against a fake server: stdout=[null], rc=22, only \"curl: (22) ... error: 400\" on stderr. `KEY=$(./mint-key.sh ...)` then holds \"null\", and the README's tests 2 and 3 pass falsely because null is rejected with 401.",
+   "fix": "Capture, then check (tested on a scratch copy):\nresp=\"$(post /key/generate \"$body\")\" || { jq -r '.error.message // .' <<< \"$resp\" >&2 2>/dev/null || echo \"$resp\" >&2; exit 1; }\njq -er '.key // empty' <<< \"$resp\""
+  },
+  {
+   "file": "mint-key.sh",
+   "issue": "Line 55 `models: ($models | split(\",\"))`: `--models \"\"` gives [], and LiteLLM treats an empty models list as ALL models (auth_checks.py:4586). That mints an unrestricted key, including access to the paid claude model. Also `--models \"local, claude\"` gives [\"local\",\" claude\"]; the leading space makes claude silently inaccessible.",
+   "fix": "Trim and drop empty entries, then refuse an empty list (tested):\nmodels: ($models | split(\",\") | map(gsub(\"^\\\\s+|\\\\s+$\"; \"\")) | map(select(length > 0)))\n... then: [[ \"$(jq -r '.models|length' <<< \"$body\")\" -gt 0 ]] || { echo \"--models must name at least one model\" >&2; exit 2; }"
+  },
+  {
+   "file": "mint-key.sh",
+   "issue": "Line 53 `--argjson budget \"$budget\"` takes any JSON: `--budget null` sends max_budget:null (no budget at all), and `--budget 5usd` shows a raw jq error.",
+   "fix": "Before building the body: [[ \"$budget\" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo \"--budget must be a number (USD)\" >&2; exit 2; }"
+  },
+  {
+   "file": "mint-key.sh",
+   "issue": "Lines 44-46: a flag with no value (for example `./mint-key.sh laptop --budget`) dies with \"line 45: $2: unbound variable\" (set -u) instead of printing usage.",
+   "fix": "Guard each case: `--models) [[ $# -ge 2 ]] || usage; models=\"$2\"; shift 2 ;;` (same for --budget and --duration)."
+  },
+  {
+   "file": "mint-key.sh",
+   "issue": "Line 12 `set -a; source ...; set +a` exports every secret in seats.env (LITELLM_MASTER_KEY, ANTHROPIC_API_KEY, POSTGRES_PASSWORD) into the environment of every curl and jq child. Same-user tools such as `ps e` and /proc/<pid>/environ can see them, which weakens the \"never shows up in ps\" comment. The script only needs shell variables.",
+   "fix": "Use `source \"$env_file\"` with no set -a/+a. The here-string still expands $LITELLM_MASTER_KEY."
+  },
+  {
+   "file": "mint-key.sh",
+   "issue": "Revoking is by full key only. Because aliases must be unique, re-minting a seat (for example after a lost key) fails with 400 until the old key is deleted, and there is no way to revoke a seat whose key was lost.",
+   "fix": "Add `--revoke-seat <seat>` that posts `jq -nc --arg a \"$2\" '{key_aliases: [$a]}'` to /key/delete; the endpoint supports key_aliases. Document that re-minting a seat requires revoking it first."
+  },
+  {
+   "file": "mint-key.sh",
+   "issue": "Line 22 uses --fail-with-body, which needs curl 7.76.0 or later. The README only says \"curl\", and older distro curl (for example Ubuntu 20.04's 7.68) errors out.",
+   "fix": "State \"curl 7.76+\" in the README requirements, or fall back to `--fail` plus a status check."
+  },
+  {
+   "file": "seats.env.example",
+   "issue": "Line 6 `LITELLM_MASTER_KEY=sk-change-me`: LiteLLM's boot check only refuses an unset, empty or \"sk-1234\" master key, so an unedited copy starts up with an admin key that is printed in this public repo and exposed on the LAN. The same applies to `LITELLM_SALT_KEY=sk-change-me-too` (line 10), and a salt can never be changed later.",
+   "fix": "Ship `LITELLM_MASTER_KEY=` empty: the proxy then refuses to start, and mint-key.sh's `${LITELLM_MASTER_KEY:?}` fires. Do NOT empty the salt (\"\" would be used as the salt); instead add a guard to mint-key.sh and the README: [[ \"$LITELLM_MASTER_KEY$LITELLM_SALT_KEY\" != *change-me* ]] || { echo \"replace the placeholder keys in seats.env\" >&2; exit 1; }. Suggest `echo \"sk-$(openssl rand -hex 32)\"` for both."
+  },
+  {
+   "file": "seats.env.example",
+   "issue": "Lines 14-15: the password is written twice and must match by hand. POSTGRES_PASSWORD only applies when the pgdata volume is first created, so a later edit makes DATABASE_URL wrong and the proxy can no longer reach the DB. Characters like @ : / # in the password break the URL.",
+   "fix": "Add to the comment: \"Use letters/digits only (openssl rand -hex 24). Set it before the first `docker compose up`; changing it later needs ALTER USER in Postgres or `docker compose down -v`, which deletes all keys.\""
+  },
+  {
+   "file": "compose.yaml",
+   "issue": "Line 20 `env_file: seats.env` on the db service gives Postgres every secret (the master key, the Anthropic key and the salt), as `docker compose config` shows, when it only needs POSTGRES_PASSWORD. This contradicts the README's \"only the proxy ever sees these\".",
+   "fix": "Put POSTGRES_PASSWORD in a separate gitignored db.env used by the db service, or remove env_file from db and run `docker compose --env-file seats.env up -d` with `environment: POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}`. At minimum, change the README wording."
+  },
+  {
+   "file": "compose.yaml",
+   "issue": "Line 6 `${LITELLM_TAG:-main-stable}` is a moving tag. Behavior the README relies on has changed between releases: model denial went from 401 to 403 between v1.83 and v1.95, and over-budget went from 429 to 422. A `docker compose pull` can silently change the expected test output. Also, LITELLM_TAG is read by compose interpolation (shell or .env), NOT from seats.env (verified), which users will not guess.",
+   "fix": "Default to a pinned tag, `${LITELLM_TAG:-v1.106.6}` (it exists on GHCR with the same digest as main-stable today), and tell users in a comment to set LITELLM_TAG in the shell or in .env, not in seats.env."
+  },
+  {
+   "file": "compose.yaml",
+   "issue": "Line 12 \"4000:4000\" publishes plain HTTP on all host interfaces. Seat keys travel unencrypted on the LAN, the /ui admin panel is reachable, and Docker-published ports bypass host firewalls like ufw. This is a risky choice rather than a bug, since LAN access is intended.",
+   "fix": "Say this in the README. Optionally bind to one LAN IP (\"192.168.1.10:4000:4000\") or 127.0.0.1 plus a TLS reverse proxy."
+  },
+  {
+   "file": "compose.yaml",
+   "issue": "Line 27 `pg_isready -U litellm` checks over the Unix socket. On first start, the postgres entrypoint runs a temporary init server with listen_addresses='' (socket only), so the healthcheck can pass before the real server is up and the proxy may connect during the restart. Low severity: restart: unless-stopped recovers.",
+   "fix": "test: [\"CMD-SHELL\", \"pg_isready -U litellm -d litellm -h 127.0.0.1\"]"
+  },
+  {
+   "file": "config.yaml",
+   "issue": "Line 8 `ollama/<local-model>` uses Ollama's /api/generate; LiteLLM docs recommend `ollama_chat/` for chat. More important for the \"one lock\" story: Ollama has no auth, so any seat on the LAN can call http://192.168.1.50:11434 directly and bypass keys and budgets. Ollama also binds 127.0.0.1 by default, so the proxy cannot reach it unless OLLAMA_HOST=0.0.0.0 is set.",
+   "fix": "Use `model: ollama_chat/<local-model>`. In the README, say to set OLLAMA_HOST=0.0.0.0 on the Ollama box and firewall port 11434 so only the proxy host can reach it."
+  },
+  {
+   "file": "README.md",
+   "issue": "Lines 62-77, the test section: (a) if minting fails, KEY=\"null\" and tests 2 and 3 pass falsely; (b) test 2 does not print a status code, though current main-stable returns 403 key_model_access_denied (older versions 401); (c) re-running after an aborted run fails, because alias \"test-seat\" still exists.",
+   "fix": "After minting add `[[ $KEY == sk-* ]] || { echo \"mint failed\"; exit 1; }`. For test 2 use `curl -s -o /dev/null -w '%{http_code}\\n' ...  # expect 403 (401 on older LiteLLM)`. Use a unique alias such as `test-$(date +%s)`, or revoke by alias first."
+  },
+  {
+   "file": "README.md",
+   "issue": "\"a dollar budget\" reads like a recurring allowance, but the script sends max_budget with no budget_duration, so it is a lifetime cap for the key. The local Ollama model costs $0, so the budget never limits local use. Over budget returns HTTP 422 in v1.106.6.",
+   "fix": "Reword to \"a total dollar cap for the life of the key (paid models only)\", or add a `--budget-duration 30d` flag that sends budget_duration."
+  },
+  {
+   "file": ".gitignore",
+   "issue": "Only the exact name `seats.env` is ignored, so copies such as seats.env.bak or seats.env.old would be committed (verified with git check-ignore).",
+   "fix": "Replace the `seats.env` line with two lines: `seats.env*` and `!seats.env.example` (verified: .bak is ignored and .example is kept)."
+  }
+ ]
+}

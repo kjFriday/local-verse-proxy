@@ -24,7 +24,7 @@ jobs:
         with:
           # One exact Go, the one in gui/Dockerfile, so a release can
           # be built again the same way. Update both together.
-          go-version: "1.24.13"
+          go-version: "1.26.10"
       - name: Test
         run: go vet ./... && go test ./...
       - name: Build and pack

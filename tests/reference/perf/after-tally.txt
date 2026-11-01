@@ -1,0 +1,5 @@
+psql spawn + first query 152.8 ms
+tally as polled  p50    4.72 p95    6.13 ms n=40  Postgres CPU 7.3 ms/run, rows 202
+history query    p50  167.01 p95  195.72 ms n=10  Postgres CPU 166.6 ms/run (once per 600 s)
+check (refresh)  p50    7.70 p95   73.81 ms n=30; per second of watching: Postgres 0.92% core, LiteLLM 1.03% core
+cards 200 tally rows 202

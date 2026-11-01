@@ -43,13 +43,22 @@ var ErrUTF16 = errors.New("seems to be saved as UTF-16 (Notepad calls " +
 // are dropped; bash would keep them in the values. UTF-16 text gets
 // ErrUTF16. An error never repeats any part of a value.
 func Parse(text string, env LookupFunc) (map[string]string, error) {
+	vals, _, err := parse(text, env)
+	return vals, err
+}
+
+// parse is Parse, and the names in the order the file first sets
+// them.
+func parse(text string, env LookupFunc) (map[string]string, []string,
+	error) {
 	if strings.HasPrefix(text, "\xff\xfe") ||
 		strings.HasPrefix(text, "\xfe\xff") ||
 		strings.IndexByte(text, 0) >= 0 {
-		return nil, ErrUTF16
+		return nil, nil, ErrUTF16
 	}
 	text = strings.TrimPrefix(text, "\ufeff")
 	vals := map[string]string{}
+	var names []string
 	lookup := func(name string) (string, bool) {
 		if v, ok := vals[name]; ok {
 			return v, true
@@ -63,12 +72,15 @@ func Parse(text string, env LookupFunc) (map[string]string, error) {
 		p := &lineParser{s: strings.TrimSuffix(line, "\r"),
 			lookup: lookup}
 		if msg := p.parse(func(name, value string) {
+			if _, ok := vals[name]; !ok {
+				names = append(names, name)
+			}
 			vals[name] = value
 		}); msg != "" {
-			return nil, &SyntaxError{Line: i + 1, Msg: msg}
+			return nil, nil, &SyntaxError{Line: i + 1, Msg: msg}
 		}
 	}
-	return vals, nil
+	return vals, names, nil
 }
 
 type lineParser struct {

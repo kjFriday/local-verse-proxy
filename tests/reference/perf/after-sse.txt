@@ -1,0 +1,2 @@
+x20 traffic=True 90s: FD CPU 0.61% core, RSS 31.3 MB, LiteLLM CPU 34.2%, Postgres CPU 2.38% | per viewer: down 5.49 MB/h, up 0.11 MB/h, events 16.0, full states 16.0, fetches 16.0 in window, new connections 2.0
+x20 traffic=False 45s: FD CPU 0.47% core, RSS 31.1 MB, LiteLLM CPU 1.0%, Postgres CPU 0.97% | per viewer: down 0.01 MB/h, up 0.00 MB/h, events 0.0, full states 0.0, fetches 0.0 in window, new connections 0.0

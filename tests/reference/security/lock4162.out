@@ -1,0 +1,22 @@
+== 1. one device, 6 wrong tries 1.1 s apart, then right
+  .7 wrong 1 (401, 'Wrong password. 4 tries left before a 10-minute lock.', None)
+  .7 wrong 2 (401, 'Wrong password. 3 tries left before a 10-minute lock.', None)
+  .7 wrong 3 (401, 'Wrong password. 2 tries left before a 10-minute lock.', None)
+  .7 wrong 4 (401, 'Wrong password. 1 try left before a 10-minute lock.', None)
+  .7 wrong 5 (401, 'Wrong password. That was the last try: wait 10 minutes.', None)
+  .7 wrong 6 (429, 'Too many wrong passwords. Wait 10 minutes.', '599')
+  .7 RIGHT (locked): (429, 'Too many wrong passwords. Wait 10 minutes.', '598')
+  .8 RIGHT: (200,)
+== 2. locked .7 floods 300 tries; fresh device logs in meanwhile
+  locked flood codes: {429: 300} | fresh .9 RIGHT during it: (200,)
+== 3. 5 wrong each from 3 devices, then a fresh device
+  127.0.1.1 5th answer: 401 None
+  127.0.1.2 5th answer: 401 None
+  127.0.1.3 5th answer: 401 None
+  fresh 127.0.2.50 RIGHT: (200,)
+== 4. 200 wrong from 40 devices, 8 threads at once
+  0.15 s, (status, Retry-After): {(401, None): 40, (429, '1'): 160}
+  RIGHT password at once: (200, 'ok', None)
+  RIGHT password 1.1 s later: (200,)
+== 5. sustained: 10 attacker addresses hammer, legit obeys Retry-After
+  attacker checked tries: 10; legit got in after 0.0 s and 1 tries

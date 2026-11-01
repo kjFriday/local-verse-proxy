@@ -1,0 +1,28 @@
+Office 7387d8, practice week: after day 5 of 5 (2m days)
+1 mana = $0.00001; daily mana 1,500 per seat
+
+GUILDS: points per member (finished, efficient work)
+  owls     4 members  1100.3  ##############################
+  foxes    3 members   887.0  ########################
+  bees     3 members   705.1  ###################
+
+WHO FINISHED WORK (game score)      | WHO BURNED TOKENS (naive board)
+ # seat   persona  done  eff    pts |  # seat      tokens   mana  done
+ 1 moss   frugal     53 1.48 2272.8 |  1 blitz    446,752  7,644   23
+ 2 fern   frugal     62 1.50 2236.1 |  2 spike    414,111  7,708   24
+ 3 bea    balanced   46 0.98 1463.1 |  3 ben       85,497  3,340   57
+ 4 ben    balanced   57 0.97 1410.9 |  4 bea       84,060  4,625   46
+ 5 gus    gearhead   34 0.50  488.2 |  5 gus       55,638  7,662   34
+ 6 gia    gearhead   41 0.50  435.2 |  6 gia       55,369  7,631   41
+ 7 blitz  spammy     23 0.50  269.2 |  7 moss      45,321    602   53
+ 8 spike  spammy     24 0.50  219.0 |  8 fern      44,760    592   62
+ 9 sid    slacker     5 1.50  213.8 |  9 sid        6,865     93    5
+10 sal    slacker     6 1.42  169.2 | 10 sal        5,816     79    6
+
+GOODHART CHECK
+  Token board #1: blitz (spammy), 446,752 tokens, 23 done, 269 pts
+  Spend board #1: spike (spammy), 7,708 mana, 24 done, 219 pts
+  Score board #1: moss (frugal), 45,321 tokens, 53 done, 2273 pts
+  blitz burned 9.9x the tokens of moss, for 0.43x the finished quests
+  and 0.12x the points.
+  Rank match, tokens vs score: +0.12 (+1 same order, 0 none, -1 reversed)

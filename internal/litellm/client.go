@@ -26,18 +26,28 @@ import (
 // gives mint-key.sh, so a slow proxy gets a message, not a kill.
 const DefaultTimeout = 25 * time.Second
 
-// maxAnswer is the most of an answer that is read.
+// maxAnswer is the most of an answer that is read, by default.
 const maxAnswer = 1 << 20
 
 // Client talks to one proxy. Its methods may be called at once from
 // several goroutines.
 type Client struct {
-	base   *url.URL
-	master string
-	http   *http.Client
+	base      *url.URL
+	master    string
+	http      *http.Client
+	maxAnswer int64
 
 	// UserAgent names the program in each request.
 	UserAgent string
+}
+
+// Options are how NewWith makes a Client.
+type Options struct {
+	BaseURL, MasterKey, UserAgent string
+
+	Timeout   time.Duration // whole request; 0: DefaultTimeout
+	MaxAnswer int64         // bytes of an answer read; 0: 1 MiB
+	EnvProxy  bool          // HTTPS_PROXY etc.; New sets true
 }
 
 // New makes a Client for the proxy at baseURL, like
@@ -50,27 +60,43 @@ type Client struct {
 // followed, so the master key goes nowhere else.
 func New(baseURL, masterKey string, timeout time.Duration) (*Client,
 	error) {
-	u, err := ParseBase(baseURL)
+	return NewWith(Options{BaseURL: baseURL, MasterKey: masterKey,
+		UserAgent: "local-verse-proxy", Timeout: timeout,
+		EnvProxy: true})
+}
+
+// NewWith makes a Client as o says. With EnvProxy false no web proxy
+// is ever used, whatever the environment says. An empty UserAgent
+// sends none.
+func NewWith(o Options) (*Client, error) {
+	u, err := ParseBase(o.BaseURL)
 	if err != nil {
 		return nil, err
 	}
-	if masterKey == "" {
+	if o.MasterKey == "" {
 		return nil, errors.New("no master key")
 	}
-	if timeout <= 0 {
-		timeout = DefaultTimeout
+	if o.Timeout <= 0 {
+		o.Timeout = DefaultTimeout
+	}
+	if o.MaxAnswer <= 0 {
+		o.MaxAnswer = maxAnswer
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.Proxy = http.ProxyFromEnvironment
+	tr.Proxy = nil
+	if o.EnvProxy {
+		tr.Proxy = http.ProxyFromEnvironment
+	}
 	return &Client{
 		base:   u,
-		master: masterKey,
+		master: o.MasterKey,
 		http: &http.Client{
 			Transport:     tr,
-			Timeout:       timeout,
+			Timeout:       o.Timeout,
 			CheckRedirect: noRedirects,
 		},
-		UserAgent: "local-verse-proxy",
+		maxAnswer: o.MaxAnswer,
+		UserAgent: o.UserAgent,
 	}, nil
 }
 
@@ -128,15 +154,78 @@ func (c *Client) Get(ctx context.Context, path string, out any) error {
 	return c.do(ctx, http.MethodGet, path, nil, out)
 }
 
-func (c *Client) do(ctx context.Context, method, path string,
-	body []byte, out any) error {
+// Raw GETs path and gives the status and body as they came, with
+// or without the master key. err is a transport error, with the
+// master key cut out, or *TooBigError: the answer is longer than
+// MaxAnswer, and body holds its first MaxAnswer bytes.
+func (c *Client) Raw(ctx context.Context, path string,
+	auth bool) (status int, body []byte, err error) {
+	u, err := c.url(path)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return 0, nil, c.hide(err)
+	}
+	if auth {
+		req.Header.Set("Authorization", "Bearer "+c.master)
+	}
+	req.Header["User-Agent"] = []string{c.UserAgent}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, c.hide(err)
+	}
+	defer resp.Body.Close()
+	body, err = io.ReadAll(io.LimitReader(resp.Body, c.maxAnswer+1))
+	if err != nil {
+		return resp.StatusCode, body, c.hide(err)
+	}
+	if int64(len(body)) > c.maxAnswer {
+		return resp.StatusCode, body[:c.maxAnswer],
+			&TooBigError{Max: c.maxAnswer}
+	}
+	return resp.StatusCode, body, nil
+}
+
+// TooBigError is an answer longer than a Client reads.
+type TooBigError struct{ Max int64 }
+
+func (e *TooBigError) Error() string {
+	return fmt.Sprintf("the proxy's answer is over %d bytes", e.Max)
+}
+
+// hidden is an error whose text has the master key cut out; errors.As
+// and errors.Is still see what it wraps.
+type hidden struct {
+	err  error
+	text string
+}
+
+func (h *hidden) Error() string { return h.text }
+func (h *hidden) Unwrap() error { return h.err }
+
+func (c *Client) hide(err error) error {
+	return &hidden{err: err, text: c.scrub(err.Error())}
+}
+
+func (c *Client) url(path string) (string, error) {
 	ref, err := url.Parse(path)
 	if err != nil || ref.Scheme != "" || ref.Host != "" {
-		return fmt.Errorf("bad API path %q", path)
+		return "", fmt.Errorf("bad API path %q", path)
 	}
 	u := *c.base
 	u.Path += "/" + strings.TrimLeft(ref.Path, "/")
 	u.RawQuery = ref.RawQuery
+	return u.String(), nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string,
+	body []byte, out any) error {
+	u, err := c.url(path)
+	if err != nil {
+		return err
+	}
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
@@ -151,7 +240,7 @@ func (c *Client) do(ctx context.Context, method, path string,
 			}
 		},
 	})
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), rd)
+	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
 		return err
 	}
@@ -160,15 +249,13 @@ func (c *Client) do(ctx context.Context, method, path string,
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.UserAgent != "" {
-		req.Header.Set("User-Agent", c.UserAgent)
-	}
+	req.Header["User-Agent"] = []string{c.UserAgent}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return c.connError(err, sent.Load())
 	}
 	defer resp.Body.Close()
-	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, c.maxAnswer))
 	if err != nil {
 		return c.connError(err, true)
 	}
@@ -176,7 +263,7 @@ func (c *Client) do(ctx context.Context, method, path string,
 		return &StatusError{
 			Code:     resp.StatusCode,
 			Message:  c.scrub(Message(answer)),
-			Location: c.scrub(resp.Header.Get("Location")),
+			Location: c.where(resp.Header.Get("Location")),
 		}
 	}
 	if out == nil {
@@ -184,15 +271,42 @@ func (c *Client) do(ctx context.Context, method, path string,
 	}
 	if err := json.Unmarshal(answer, out); err != nil {
 		return &AnswerError{Problem: "it is not the JSON expected",
-			Body: c.scrub(clip(answer))}
+			Body: clip(c.scrub(string(answer)))}
 	}
 	return nil
 }
 
 // scrub cuts the master key out of text, leaving its last 4
-// characters, as LiteLLM itself does.
+// characters, as LiteLLM itself does. Text cut short (at the most an
+// answer is read) may end in the key's first characters: those go
+// too. A proxy that echoes the request would otherwise show the key.
 func (c *Client) scrub(s string) string {
-	return strings.ReplaceAll(s, c.master, Mask(c.master))
+	m := c.master
+	s = strings.ReplaceAll(s, m, Mask(m))
+	for k := min(len(m)-1, len(s)); k >= 4; k-- {
+		if strings.HasSuffix(s, m[:k]) {
+			return s[:len(s)-k] + Mask(m)
+		}
+	}
+	return s
+}
+
+// where is a redirect's Location as a message shows it: scheme, host
+// and path, the path decoded and scrubbed; no user, query or
+// fragment, which could carry the master key in any spelling.
+func (c *Client) where(loc string) string {
+	if loc == "" {
+		return ""
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		return "an address that cannot be read"
+	}
+	out := ""
+	if u.Host != "" {
+		out = u.Scheme + "://" + u.Host
+	}
+	return c.scrub(out + u.Path)
 }
 
 // Mask shows a key as sk-...last4, the way LiteLLM's own messages do.
@@ -203,8 +317,8 @@ func Mask(key string) string {
 	return "sk-..." + key[len(key)-4:]
 }
 
-func clip(b []byte) string {
-	s := strings.TrimSpace(string(b))
+func clip(s string) string {
+	s = strings.TrimSpace(s)
 	if len(s) > 300 {
 		s = s[:300] + "..."
 	}

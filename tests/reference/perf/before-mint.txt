@@ -1,0 +1,3 @@
+port 4117 mint   p50  124.44 p95  465.48 max  465.48 ms n=20
+port 4117 revoke p50  103.40 p95  122.65 max  122.65 ms n=20
+port 4117 state wrong right after mint/revoke: 0 of 40

@@ -546,7 +546,7 @@ or jq.
   run `Get-FileHash <file>`; in cmd,
   `certutil -hashfile <file> SHA256`. Compare what it prints with
   that file's line in `SHA256SUMS`; capitals do not matter.
-- **Or build it**, with Go 1.24 or newer (from go.dev), in this
+- **Or build it**, with Go 1.26 or newer (from go.dev), in this
   folder: `go build ./cmd/mint-key`. That makes `mint-key`, or
   `mint-key.exe` on Windows. In WSL,
   `GOOS=windows go build ./cmd/mint-key` makes `mint-key.exe` for

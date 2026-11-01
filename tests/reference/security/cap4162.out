@@ -1,0 +1,9 @@
+baseline: 3 threads
+A: 127.0.0.5 opens 400 stalled: 32 still open, 35 threads
+   20 other devices load the page at once: 20/20 ok; e.g. 200 7631B in 3.7 ms | 200 7631B in 2.3 ms
+   same device 127.0.0.5: refused (RemoteDisconnected)
+B: after 13 s of drip, 32 of 127.0.0.5's conns alive; other device: 200 7631B in 1.3 ms; threads 36
+   127.0.0.5 after letting go: 200 7631B in 1.5 ms threads 4
+C: 2 addresses x 100 stalled: 64 held; other device: 200 7631B in 1.5 ms
+D: 8 addresses x 40 stalled: 256 held, threads 259; 9th device: refused (RemoteDisconnected)
+   after they let go, 9th device: 200 7631B in 1.4 ms threads 4

@@ -1,0 +1,157 @@
+# Office game rules: every number the game uses lives here.
+# Change them between weeks: `office.py reset`, edit, `office.py setup`.
+
+[office]
+seat_prefix = "game-"      # key alias = prefix + name, so game seats
+                           # never clash with your real ones
+models = ["local", "pro"]  # models a game key may use
+key_life = "8d"            # game keys expire after this (a week+)
+
+[day]
+# One game day. It is also each key's budget_duration, so LiteLLM
+# itself refills the mana. LiteLLM lines resets up with the clock
+# ("2m" refills at :00, :02, :04...), so pick a length that splits
+# the hour (or the day) evenly. Practice: "2m". Real office: "1d".
+length = "2m"
+# Bots stop this long before the day ends, so the spend logs are
+# written and scored before the mana resets.
+close = "35s"
+per_week = 5
+
+[mana]
+usd = 0.00001  # 1 mana = this many US dollars of model spend
+daily = 1500   # mana per seat per day: the key's max_budget
+
+[quests]
+per_seat = 10     # quests posted per seat per day (enough that the
+                  # fastest bots never run out)
+redo_share = 0.5  # a rejected quest needs this share of its calls again
+max_attempts = 3  # rejected this many times: given up
+
+# value: points at par. calls: the fewest tagged requests that prove
+# the work was done (min_calls). par_mana: what the work should cost.
+# weight: how often this size is posted.
+[quests.sizes.small]
+weight = 5
+value = 10
+calls = 2
+par_mana = 12
+
+[quests.sizes.medium]
+weight = 3
+value = 25
+calls = 4
+par_mana = 25
+
+[quests.sizes.large]
+weight = 2
+value = 50
+calls = 7
+par_mana = 45
+
+[score]
+eff_min = 0.33      # efficiency = par_mana / mana used, kept in
+eff_max = 1.5       # this range (the floor is hit at 3x par)
+streak_step = 0.10  # +10% for each day in a row with an approved quest
+streak_cap = 0.50   # up to +50%. Only days before today count, so a
+                    # 5-day week tops out at +40%
+flush_wait = "60s"  # most time to wait for spend logs at day end
+
+[board]
+individuals = true  # false: show only guilds (kinder in a real office)
+
+[sim]
+seed = 42         # same seed, same dice (timing still varies)
+pro_boost = 0.15  # extra approval chance for work done on pro
+
+# Personas: how each bot works.
+#   pro      chance a quest is done on the pro model
+#   chars    prompt size range, in characters (4 chars ~ 1 token)
+#   reply    max_tokens asked for
+#   per_step calls per step of work
+#   retry    chance to resend a step anyway
+#   skill    chance the manager approves the work
+#   pause    seconds between calls. frugal, balanced and gearhead
+#            share one pace, so only their AI habits differ
+#   quests   most quests per day
+#   bluff    chance to hand a quest in after one call
+#   stream   ask for streamed replies
+
+[personas.frugal]
+pro = 0.0
+chars = [300, 700]
+reply = 80
+per_step = 1
+retry = 0.0
+skill = 0.80
+pause = [1.0, 2.0]
+quests = 99
+bluff = 0.0
+stream = false
+
+[personas.balanced]
+pro = 0.25
+chars = [600, 1400]
+reply = 160
+per_step = 1
+retry = 0.05
+skill = 0.80
+pause = [1.0, 2.0]
+quests = 99
+bluff = 0.0
+stream = true
+
+[personas.spammy]
+pro = 0.1
+chars = [3000, 8000]
+reply = 400
+per_step = 2
+retry = 0.3
+skill = 0.60
+pause = [0.2, 0.6]
+quests = 99
+bluff = 0.0
+stream = false
+
+[personas.gearhead]
+pro = 1.0
+chars = [600, 1400]
+reply = 200
+per_step = 1
+retry = 0.05
+skill = 0.80
+pause = [1.0, 2.0]
+quests = 99
+bluff = 0.0
+stream = false
+
+[personas.slacker]
+pro = 0.0
+chars = [300, 800]
+reply = 100
+per_step = 1
+retry = 0.0
+skill = 0.70
+pause = [3.0, 6.0]
+quests = 2
+bluff = 0.5
+stream = false
+
+# The office: who plays, how, and in which guild.
+# Names: up to 6 lowercase letters or digits.
+[roster]
+seats = [
+  {name = "fern",  persona = "frugal",   guild = "owls"},
+  {name = "bea",   persona = "balanced", guild = "owls"},
+  {name = "gus",   persona = "gearhead", guild = "owls"},
+  {name = "sid",   persona = "slacker",  guild = "owls"},
+  {name = "moss",  persona = "frugal",   guild = "foxes"},
+  {name = "spike", persona = "spammy",   guild = "foxes"},
+  {name = "sal",   persona = "slacker",  guild = "foxes"},
+  {name = "ben",   persona = "balanced", guild = "bees"},
+  {name = "blitz", persona = "spammy",   guild = "bees"},
+  {name = "gia",   persona = "gearhead", guild = "bees"},
+]
+
+[extra]
+a = 9223372036854775808
