@@ -902,6 +902,7 @@ network over plain HTTP.
 ## File map
 
 - `README.md`: this guide.
+- `LICENSE`: the Apache License 2.0, under which you may use this.
 - `docs/lvp-handbook.md`: how to use `lvp`, the Go program for
   keys, Front Desk and the game, with Windows and WSL steps.
 - `docs/port-spec.md`: the design `lvp` was built from; code comments
@@ -975,4 +976,8 @@ network over plain HTTP.
 
 ## License
 
-To be decided.
+Apache License 2.0: see [LICENSE](LICENSE). You may use, change and
+share this project, also commercially, if you keep the license and
+its notices with it and say what you changed. The programs it builds
+on keep their own licenses; each release lists them in
+`THIRD_PARTY_NOTICES.txt`.

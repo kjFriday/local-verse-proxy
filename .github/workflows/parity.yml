@@ -136,6 +136,7 @@ jobs:
               exit 1
             fi
             grep -qx 'THIRD_PARTY_NOTICES.txt' "files-$arch.txt"
+            grep -qx 'LICENSE' "files-$arch.txt"
           done
           # Runs here (amd64): read-only, no powers, no network.
           docker run --rm --read-only --cap-drop ALL \

@@ -52,10 +52,12 @@ Tests   release.yml `pack`
 ```text
 ID      R-5
 What    Archives carry THIRD_PARTY_NOTICES.txt (Go's license and each
-        linked module's, from internal/notices); there is still no
-        license file of the project's own.
-Why     Decision 24; the license is the user's call (README: "To be
-        decided").
-Safe    Compliance for the linked code; nothing chosen for the user.
-Tests   release.yml `pack`, `try` (the file is there)
+        linked module's, from internal/notices), and the project's
+        own LICENSE (Apache 2.0, the user's choice), which the source
+        tree in each archive holds; the image holds both at its root.
+Why     Decision 24: the license was the user's call; they chose
+        Apache 2.0, which asks that a copy goes with the program.
+Safe    Compliance for the linked code and for this project's own.
+Tests   release.yml `pack`, `try` (the file is there); parity.yml
+        image job (LICENSE and THIRD_PARTY_NOTICES.txt in the image)
 ```

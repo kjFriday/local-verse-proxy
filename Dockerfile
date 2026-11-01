@@ -25,6 +25,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
+COPY LICENSE /out/LICENSE
 COPY gui/ gui/
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
       go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
@@ -44,6 +45,8 @@ FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/lvp /lvp
 COPY --from=build /out/THIRD_PARTY_NOTICES.txt /
+# This project's own license (Apache 2.0), with the program.
+COPY --from=build /out/LICENSE /
 COPY --from=build /out/root/ /
 # mint-key in the image reads this empty file, then the environment
 # that compose passes in from seats.env (env_file in compose.yaml). A

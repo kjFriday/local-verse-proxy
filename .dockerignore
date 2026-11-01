@@ -8,6 +8,7 @@
 !cmd
 !internal
 !gui
+!LICENSE
 **/seats.env*
 **/.env
 **/*.key
